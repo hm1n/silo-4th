@@ -18,6 +18,8 @@ Sentry 무료 요금제(Developer)와 `@sentry/nextjs`로 서버와 브라우저
 - 세션 리플레이를 켜지 않는다.
 - 오류와 함께 보내는 정보(breadcrumb, extra, context)에 질문 원문과 이메일을 넣지 않는다.
 
+2026-10-30 연동 때 확인한 내용: `@sentry/nextjs` v11에는 `sendDefaultPii`가 없고, `dataCollection`의 기본값이 사용자 정보, HTTP 본문과 헤더, 쿠키, 쿼리, LLM 입출력(`genAI`), 스택 프레임 로컬 변수를 모두 수집한다. 그래서 `lib/sentry.ts`의 공용 설정에서 이 항목을 모두 명시적으로 끄고, 서버, edge, 브라우저 초기화가 이 설정 하나를 함께 쓴다. (근거: `node_modules/@sentry/core/build/types/types/datacollection.d.ts`)
+
 ## 검토한 대안
 
 | 대안 | 장점 | 단점 | 택하지 않은 이유 |

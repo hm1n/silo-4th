@@ -24,6 +24,8 @@
 | 파일을 고칠 때마다 그 파일을 린트한다 | `.claude/settings.json` PostToolUse 훅 | [0001](adr/0001-ai-coding-rule-enforcement.md) |
 | `.env` 파일을 읽지 않는다 | `.claude/settings.json` `permissions.deny` | [0001](adr/0001-ai-coding-rule-enforcement.md) |
 | `_docs/raw/`에 이미 있는 파일은 고치지 않는다. 새 원본 저장은 허용한다 | `.claude/hooks/protect-raw.mjs` (PreToolUse 훅) | [0002](adr/0002-raw-protection-in-repo.md) |
+| Sentry는 `lib/sentry.ts`의 `sentryOptions`로만 초기화한다. 세션 리플레이를 넣지 않고, `dataCollection`으로 사용자 정보, HTTP 본문, LLM 입출력, 로컬 변수 수집을 끈다 | `lib/sentry.ts`, `instrumentation.ts`, `instrumentation-client.ts` | [0005](adr/0005-sentry-error-monitoring.md) |
+| 오류 정보(breadcrumb, extra, context)에 질문 원문과 이메일을 넣지 않는다 | 코드 리뷰 (기계 검사 없음) | [0005](adr/0005-sentry-error-monitoring.md) |
 
 ## 설계 결정
 
@@ -47,7 +49,6 @@
 | Edge runtime 금지, `cacheComponents` 관련 규칙 | Next.js 설정을 유지할지 여부 |
 | `.claude/rules/` 경로별 규칙과 기준 예시 파일 | 디렉터리 구조 |
 | 테스트 도구, CI, pre-commit | 의존성과 배포 방식 |
-| Sentry 세션 리플레이를 켜지 않고, 오류 정보에 질문 원문과 이메일을 넣지 않는다 | Sentry 연동 (11/6). 규칙 자체는 [0005](adr/0005-sentry-error-monitoring.md)에서 정했다 |
 
 LLM 출력 스키마 규칙은 이번 스프린트에서 AI가 개념을 고르거나 문제를 만들지 않아 필요하지 않다. (근거: `raw/2026-10-30-tech-stack-decisions.md` "확정한 것")
 
