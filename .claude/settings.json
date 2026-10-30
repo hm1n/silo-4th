@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "deny": [
+      "Edit(_docs/raw/**)",
+      "Read(.env)",
+      "Read(.env.local)",
+      "Read(.env.*.local)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/protect-raw.mjs\""
+          }
+        ]
+      }
+    ]
+  }
+}
