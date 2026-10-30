@@ -6,7 +6,7 @@
 
 ## 근거
 
-- 원천 자료: [`raw/2026-10-30-tech-stack-decisions.md`](../raw/2026-10-30-tech-stack-decisions.md) (개발자의 결정), [`raw/2026-10-30-sprint1-01-brief.md`](../raw/2026-10-30-sprint1-01-brief.md), [`raw/2026-10-30-sprint1-02-screen-flow.md`](../raw/2026-10-30-sprint1-02-screen-flow.md), [`raw/2026-10-30-sprint1-03-schedule.md`](../raw/2026-10-30-sprint1-03-schedule.md), [`raw/2026-10-30-sprint1-03-1-guide.md`](../raw/2026-10-30-sprint1-03-1-guide.md)
+- 원천 자료: [`raw/2026-10-30-tech-stack-decisions.md`](../raw/2026-10-30-tech-stack-decisions.md) (개발자의 결정), Linear [01 브리프](https://linear.app/silo0/document/01-브리프-5fa343785a20), [02 화면 흐름](https://linear.app/silo0/document/02-화면-흐름-6dbdadb44bbb), [03 상세 일정](https://linear.app/silo0/document/03-상세-일정-1f1a08402713), [03-1 진행 가이드](https://linear.app/silo0/document/03-1-진행-가이드-7acec4859ba4)
 - 확인 날짜: 2026-10-30
 - 결정한 사람: 개발자 (01 브리프에서 "어떻게 동작하게 만드는지"의 DRI)
 - 관련 문서: [개발 규칙](dev-rules.md)
