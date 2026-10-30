@@ -3,6 +3,7 @@
 - 상태: 확정
 - 결정 날짜: 2026-10-30
 - 결정한 사람: 개발자
+- 수정: 2026-10-30, `permissions.deny`의 `Edit(_docs/raw/**)`를 빼고 훅만으로 막도록 고쳤다
 - 관련 문서: [AI 코딩 규칙 강제 방안](../../raw/2026-10-30-ai-harness-rules.md), [0001. AI 코딩 규칙은 md보다 검사 도구로 강제한다](0001-ai-coding-rule-enforcement.md)
 
 ## 상황
@@ -11,7 +12,7 @@
 
 ## 결정
 
-raw 차단 규칙을 저장소의 `.claude/settings.json`으로 옮긴다. PreToolUse 훅(`.claude/hooks/protect-raw.mjs`)이 `_docs/raw/` 아래 이미 있는 파일을 고치려는 작업만 막고, 새 원본 저장은 허용한다. `permissions.deny`에는 `Edit(_docs/raw/**)`를 함께 넣는다.
+raw 차단 규칙을 저장소의 `.claude/settings.json`으로 옮긴다. PreToolUse 훅(`.claude/hooks/protect-raw.mjs`)이 `_docs/raw/` 아래 이미 있는 파일을 고치려는 작업만 막고, 새 원본 저장은 허용한다. `permissions.deny`에는 raw 관련 규칙을 넣지 않는다. Claude Code에서 `Edit(...)` 권한 규칙은 Write에도 적용되어, `Edit(_docs/raw/**)`를 deny하면 새 원본 저장까지 막히기 때문이다.
 
 docs-guard mod는 끄지 않고 raw 차단 규칙만 뺀다. 새 문서 생성 전 확인과 log.md 기록 알림은 settings로 대신할 수 없기 때문이다.
 
@@ -21,6 +22,7 @@ docs-guard mod는 끄지 않고 raw 차단 규칙만 뺀다. 새 문서 생성 �
 | --- | --- | --- | --- |
 | mod 유지 | 이미 동작하고 있다 | 개인 환경에서만 동작하고 저장소에 기록이 없다 | 다른 실행 환경에서 규칙이 빠진다 |
 | `permissions.deny`에 `Write(_docs/raw/**)`까지 추가 | 설정 한 줄로 끝난다 | 새 원본을 저장하는 일도 막힌다 | raw에 자료를 추가하는 정상 작업을 할 수 없다 |
+| 훅과 함께 `permissions.deny`에 `Edit(_docs/raw/**)` 추가 | 훅이 실패해도 한 번 더 막는다 | Edit 규칙이 Write에도 적용되어 새 원본 저장이 막힌다 | 처음에는 이 방식으로 정했지만, 실제로 새 원본 저장이 막혀 2026-10-30에 뺐다 |
 | mod를 완전히 끄기 | 규칙을 관리하는 곳이 하나가 된다 | 생성 확인과 기록 알림 기능을 잃는다 | settings로 대신할 수 없는 기능이다 |
 
 ## 결과
