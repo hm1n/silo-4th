@@ -14,4 +14,7 @@ export const env = {
   get ANTHROPIC_MODEL() {
     return required("ANTHROPIC_MODEL");
   },
+  get DATABASE_URL() {
+    return required("DATABASE_URL");
+  },
 };
