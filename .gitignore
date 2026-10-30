@@ -43,3 +43,6 @@ next-env.d.ts
 
 # claude
 .token-optimizer
+
+# obsidian
+.obsidian
