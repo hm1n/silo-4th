@@ -30,6 +30,8 @@ DB는 Neon Postgres를 쓰고, 코드에서는 Drizzle ORM으로 접근한다. �
 - 테이블은 평범한 Postgres 테이블이라 PO가 SQL로 지표를 뽑을 수 있다.
 - `drizzle-orm`, `drizzle-kit`, Neon 드라이버가 의존성에 추가된다.
 
+2026-10-30 연결 때 정한 내용: 드라이버는 의존성이 가장 적은 HTTP 방식(`drizzle-orm/neon-http`, `@neondatabase/serverless`)을 쓴다. 이 방식은 대화형 트랜잭션을 지원하지 않으므로, 11/2 기록 구조 회의에서 여러 기록을 함께 저장해야 한다고 정하면 `lib/db/index.ts` 한 파일을 Pool 방식으로 바꾼다. DB 클라이언트는 `getDb()`를 처음 부를 때 만들어, 빌드 환경에 `DATABASE_URL`이 없어도 빌드가 통과한다. Neon 프로젝트는 Vercel Marketplace가 아니라 개발자 계정에 만든다. Marketplace로 만들면 접근 권한을 Vercel 팀이 관리하는데, Hobby 요금제는 PO를 팀에 추가할 수 없어 PO가 콘솔에서 SQL을 실행하지 못할 수 있기 때문이다(확인하지 않은 추정).
+
 ## 다시 검토할 조건
 
 - PO가 코드를 다루지 않고 SQL로만 데이터를 넣어야 해서 Drizzle 스키마와 실제 테이블을 맞추기 어려워지면 다시 본다.
