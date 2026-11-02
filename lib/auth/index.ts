@@ -38,7 +38,11 @@ export function getAuth() {
 
 export async function findLearner(requestHeaders: Headers) {
   try {
-    const result = await getAuth().api.getSession({ headers: requestHeaders });
+    // 서버 컴포넌트는 쿠키를 쓸 수 없다. 여기서 DB 만료일만 늘리면 브라우저의 세션 확인이 쿠키를 새로 쓰지 않는다.
+    const result = await getAuth().api.getSession({
+      headers: requestHeaders,
+      query: { disableRefresh: true },
+    });
     return result?.user ?? null;
   } catch (error) {
     // 세션 조회 오류는 cause에 세션 토큰이 담긴 DB 오류를 달고 온다. 그대로 던지면 Sentry가 cause까지 보낸다.
