@@ -6,7 +6,7 @@ import { getDb } from "@/lib/db";
 import * as schema from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import { enabledProviders, type ProviderId } from "./providers";
-import { sentryLogger } from "./sentry-logger";
+import { safeMessage, sentryLogger } from "./sentry-logger";
 
 const credentials: Record<ProviderId, () => { clientId: string; clientSecret: string }> = {
   google: () => ({ clientId: env.AUTH_GOOGLE_ID, clientSecret: env.AUTH_GOOGLE_SECRET }),
@@ -22,7 +22,8 @@ function createAuth() {
     socialProviders: Object.fromEntries(enabledProviders.map((id) => [id, credentials[id]()])),
     // 같은 이메일의 다른 로그인 방법을 기존 학습자에 자동으로 붙이지 않는다.
     account: { accountLinking: { enabled: false } },
-    onAPIError: { errorURL: "/" },
+    // API 오류가 아닌 예외를 라우트 핸들러로 던져, 원본 대신 정리한 메시지만 남긴다.
+    onAPIError: { errorURL: "/", throw: true },
     logger: sentryLogger,
   });
 }
@@ -36,8 +37,13 @@ export function getAuth() {
 }
 
 export async function findLearner(requestHeaders: Headers) {
-  const result = await getAuth().api.getSession({ headers: requestHeaders });
-  return result?.user ?? null;
+  try {
+    const result = await getAuth().api.getSession({ headers: requestHeaders });
+    return result?.user ?? null;
+  } catch (error) {
+    // 세션 조회 오류는 cause에 세션 토큰이 담긴 DB 오류를 달고 온다. 그대로 던지면 Sentry가 cause까지 보낸다.
+    throw new Error(safeMessage(error));
+  }
 }
 
 export async function getCurrentLearner() {
