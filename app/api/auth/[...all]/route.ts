@@ -8,7 +8,10 @@ export const { GET, POST } = toNextJsHandler(async (request) => {
     return await getAuth().handler(request);
   } catch (error) {
     reportAuthError(error);
-    if (request.method === "GET") {
+    // 로그인 콜백처럼 브라우저가 화면을 옮기는 요청만 안내 화면으로 보낸다. fetch 요청이 HTML을 받으면 성공으로 착각한다.
+    // Safari 16.4 이전은 이 헤더를 보내지 않아, 헤더 없는 GET은 화면 이동으로 본다.
+    const mode = request.headers.get("sec-fetch-mode");
+    if (mode === "navigate" || (mode === null && request.method === "GET")) {
       return Response.redirect(new URL("/?error=internal_server_error", request.url));
     }
     return Response.json({ code: "INTERNAL_SERVER_ERROR" }, { status: 500 });
