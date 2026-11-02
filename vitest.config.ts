@@ -6,7 +6,6 @@ import { defineConfig } from "vitest/config";
 // 테스트 유형과 범위: _docs/wiki/adr/0006-test-strategy.md
 // 단위 테스트는 `*.test.ts`, 통합 테스트는 `*.integration.test.ts`로 이름을 짓는다.
 
-// 통합 테스트는 Neon test 브랜치를 쓴다. 주소와 키는 .env.test.local에 둔다.
 const integrationEnv = existsSync(".env.test.local")
   ? parseEnv(readFileSync(".env.test.local", "utf8"))
   : {};

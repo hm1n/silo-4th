@@ -20,7 +20,6 @@ function createAuth() {
     database: drizzleAdapter(getDb(), { provider: "pg", schema, transaction: true }),
     user: { modelName: "learner" },
     socialProviders: Object.fromEntries(enabledProviders.map((id) => [id, credentials[id]()])),
-    // 같은 이메일의 다른 로그인 방법을 기존 학습자에 자동으로 붙이지 않는다.
     account: { accountLinking: { enabled: false } },
     // API 오류가 아닌 예외를 라우트 핸들러로 던져, 원본 대신 정리한 메시지만 남긴다.
     onAPIError: { errorURL: "/", throw: true },

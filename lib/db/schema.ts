@@ -1,4 +1,3 @@
-// 로그인 테이블은 Better Auth가 요구하는 열만 둔다. 학습자 정보는 이후 이슈에서 learner에 더한다.
 import { boolean, index, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 const timestamps = {
