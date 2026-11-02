@@ -81,6 +81,7 @@ function learnersWithEmail(email: string) {
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  vi.clearAllMocks();
   if (createdEmails.length > 0) {
     await getDb().delete(learner).where(inArray(learner.email, createdEmails.splice(0)));
   }
