@@ -5,9 +5,19 @@ const EMAIL = /[^\s@]+@[^\s@]+/g;
 // Drizzle 오류 메시지는 `params:` 뒤에 쿼리 값을 붙인다. 토큰, 세션 토큰, IP가 그 자리에 들어간다.
 const QUERY_PARAMS = /\nparams:[\s\S]*/;
 
+// 쿼리 값을 지우면 실패 원인도 사라진다. Postgres나 Node의 오류 코드는 값을 담지 않아 원인을 찾는 단서로 남긴다.
+function errorCode(value: unknown) {
+  for (let error = value; error instanceof Error; error = error.cause) {
+    if ("code" in error && typeof error.code === "string") return error.code;
+  }
+  return undefined;
+}
+
 export function safeMessage(value: unknown) {
   const message = value instanceof Error ? value.message : String(value);
-  return `[better-auth] ${message.replace(QUERY_PARAMS, "").replace(EMAIL, "[email]")}`;
+  const code = errorCode(value);
+  const safe = message.replace(QUERY_PARAMS, "").replace(EMAIL, "[email]");
+  return `[better-auth] ${safe}${code ? ` [code ${code}]` : ""}`;
 }
 
 export function reportAuthError(error: unknown) {
