@@ -24,6 +24,8 @@ function createAuth() {
     // API 오류가 아닌 예외를 라우트 핸들러로 던져, 원본 대신 정리한 메시지만 남긴다.
     onAPIError: { errorURL: "/", throw: true },
     logger: sentryLogger,
+    // Better Auth 추적 구간은 실패한 DB 호출의 원본 메시지를 담아 Sentry로 보낸다.
+    experimental: { instrumentation: { enabled: false } },
   });
 }
 
