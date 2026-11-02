@@ -29,7 +29,7 @@
 | LLM 연결 | `@anthropic-ai/sdk` | LLM을 답변에만 쓰고 Anthropic만 사용하므로 다른 연결 방식으로 바꿀 이유가 없다 |
 | DB | Neon Postgres | 기록 여섯 가지를 서버에 남겨야 하고, PO가 SQL로 지표를 뽑을 수 있다. [ADR 0003](adr/0003-neon-postgres-drizzle.md) |
 | DB 접근 | Drizzle ORM | 스키마에서 타입이 나와 AI가 작성한 DB 코드의 오류를 컴파일 단계에서 잡을 수 있다. [ADR 0003](adr/0003-neon-postgres-drizzle.md) |
-| 오류 알림 | Sentry | 03 상세 일정에 따라 11/6에 설정하고, 서버와 브라우저 오류를 모두 잡는다. 무료 요금제라 알림은 메일 전달로 PO에게 보낸다. [ADR 0005](adr/0005-sentry-error-monitoring.md) |
+| 오류 알림 | Sentry | 03 상세 일정에 따라 11/6에 설정하고, 서버와 브라우저 오류를 모두 잡는다. 무료 요금제라 알림은 Apps Script가 Sentry API를 조회해 Slack으로 PO에게 보낸다. [ADR 0005](adr/0005-sentry-error-monitoring.md) |
 | 스타일 | Tailwind CSS | 이미 설치되어 있고, 새 문서와 부딪치는 내용이 없다 |
 
 ## 동작 방식에 대한 결정

@@ -1,0 +1,151 @@
+# Sentry 오류 알림을 Slack으로 보내는 시스템
+
+## 한 문장 요약
+
+Google Apps Script가 5분마다 Sentry API로 새 이슈를 조회해, 허용한 필드만 Slack Incoming Webhook으로 보내 PO에게 오류를 알린다.
+
+## 근거
+
+- 원천 자료: Linear 이슈 [4-43 Sentry 알림 외부 연동하기](https://linear.app/silo0/issue/4-43), [03 상세 일정](https://linear.app/silo0/document/03-상세-일정-1f1a08402713) 11/6, [Sentry 가격표](https://sentry.io/pricing/), [Sentry API: List a Project's Issues](https://docs.sentry.io/api/events/list-a-projects-issues/), [Google Apps Script 할당량](https://developers.google.com/apps-script/guides/services/quotas)
+- 확인 날짜: 2026-10-30
+- 자료 성격: 설계 문서
+- 상태: 확정 (개발자가 정했고, 2026-10-30에 ADR 0005에 반영했다)
+- 관련 문서: [ADR 0005 오류 모니터링](../adr/0005-sentry-error-monitoring.md), [개발 규칙](../dev-rules.md), [기술 스택](../tech-stack.md)
+
+## 목표와 문제
+
+PO가 Sentry 계정 없이도 새 오류를 Slack에서 바로 알 수 있게 한다. Sentry 무료 요금제는 사용자가 1명이고, 외부 이메일 알림과 Slack 연동을 지원하지 않는다. ADR 0005는 개발자 메일함에서 알림 메일을 PO에게 전달하기로 했지만, 메일 내용을 고칠 수 없어 오류 메시지 원문이 그대로 전달된다. 이 문서는 그 전달 단계를 Slack으로 바꾸는 설계다.
+
+## 확인된 내용
+
+- Sentry 가격표는 무료(Developer) 요금제를 `API: No`, `Third-party integrations: No`, `Alerts and notifications via integrated tools: No`로 표시한다. (근거: Sentry 가격표, 2026-10-30 조회)
+- 가격표와 달리, `event:read` 권한의 개인 토큰으로 `GET /api/0/projects/eb5a968646b3/4th-silo/issues/`를 호출하면 200 응답과 이슈 `4TH-SILO-1`을 받았다. (근거: 개발자가 2026-10-30에 PowerShell로 직접 호출)
+- 프로젝트 단위 issues 엔드포인트는 deprecated이고, 조직 단위 issues 엔드포인트를 쓰라고 안내한다. 응답에는 `id`, `shortId`, `title`, `culprit`, `level`, `count`, `firstSeen`, `permalink`, `metadata`가 있다. (근거: Sentry API 문서)
+- Apps Script의 개인 계정 할당량은 트리거 실행 시간 하루 90분, UrlFetch 하루 2만 회, 실행 1회 최대 6분이다. (근거: Google Apps Script 할당량)
+- Sentry 조직은 `eb5a968646b3`, 프로젝트는 `4th-silo`, 프로젝트 ID는 `4512343569793024`다. (근거: Sentry MCP 조회, `lib/sentry.ts`의 DSN)
+- 조직 단위 이슈 검색에서 `sort=new`와 `firstSeen:>2026-10-30T08:00:00.123Z`처럼 밀리초가 붙은 ISO 시각을 그대로 쓸 수 있고, 그 시각 이전 이슈는 빠진다. (근거: 2026-10-30 Sentry MCP `search_issues` 조회)
+- 이슈의 `title`에는 오류 메시지 원문이 들어간다. 예를 들어 `4TH-SILO-1`의 제목은 서버에서 던진 오류 메시지 그대로다. (근거: 같은 조회)
+- `tools/` 아래 `.gs` 파일은 `npm run check`의 대상이 아니다. `Code.gs`를 둔 상태로 검사가 통과했다. (근거: 2026-10-30 `npm run check`)
+- 2026-10-30 19:08에 가짜 질문 원문과 가짜 이메일을 메시지에 넣은 시험 오류를 보내 `4TH-SILO-3`을 만들었다. 19:11에 Slack 앱 `silo-4th-error-alert`가 `#프로젝트-4차-오류-알림`에 알림 한 건을 보냈고, 메시지에는 오류 종류, 이슈 ID, 위치, 횟수, 시각, Sentry 링크만 있었다. 질문 원문과 이메일은 없었다. (근거: 2026-10-30 Slack 채널 조회, Sentry MCP 조회)
+- 워크스페이스의 Slack 앱 설치 한도가 차 있어서, 개발자가 기존 앱 하나를 지운 뒤 Webhook 앱을 설치했다. (근거: 2026-10-30 앱 생성 화면의 "reached its app limit" 메시지)
+- Sentry에 "새 이슈가 생기면 개발자에게 메일" 알림 규칙(ID 6264591)을 만들었다. 기본으로 있던 "우선순위 높은 이슈 알림" 규칙은 새 이슈 전부를 보내지 않아서 따로 추가했다. (근거: 2026-10-30 Sentry MCP `create_alert_rule`)
+
+## 검토한 대안
+
+| 대안 | 판정 | 이유 |
+| --- | --- | --- |
+| Apps Script가 5분마다 Sentry API를 조회해 Slack Webhook으로 보낸다 | 채택 | API 응답을 직접 확인했다. 비용과 운영할 서버가 없다 |
+| Vercel Cron으로 앱 안에서 조회한다 | 탈락 | Hobby 요금제의 Cron은 하루 1회라 알림이 최대 하루 늦는다 (확인 필요, Vercel 문서를 이번에 직접 보지 않았다) |
+| GitHub Actions 예약 실행으로 조회한다 | 탈락 | 5분 주기면 한 달 약 8,640회를 실행해 비공개 저장소의 무료 2,000분을 넘는다 (추정) |
+| Gmail의 Sentry 메일을 Slack 채널 메일 주소로 전달한다 | 탈락 | 메일 내용을 고칠 수 없어 오류 메시지 원문이 그대로 간다 |
+| Gmail의 Sentry 메일을 Apps Script로 읽어 Slack으로 보낸다 | 예비안 | Sentry가 무료 요금제의 API를 막으면 이 방식으로 바꾼다 |
+
+Slack 봇 토큰(`chat.postMessage`) 대신 Incoming Webhook을 쓴다. 메시지를 한 채널에 보내기만 하므로 Webhook URL 하나로 충분하고, 봇 권한과 토큰을 관리할 필요가 없다.
+
+## 구조
+
+```
+[Next.js 앱] --오류--> [Sentry 4th-silo]
+                            ^
+                            | GET /api/0/organizations/eb5a968646b3/issues/
+                            |     ?project=4512343569793024&sort=new&query=firstSeen:>{SINCE}
+[Apps Script, 5분 트리거] --+
+        |  새 이슈만 골라 허용한 필드로 메시지를 만든다
+        v
+[Slack Incoming Webhook] --> PO가 있는 채널
+```
+
+### 데이터 형태
+
+Sentry 응답은 `UrlFetchApp`으로 받은 직후 아래 타입으로 한 번만 바꾼다. 그 뒤의 코드는 원본 JSON을 다루지 않는다.
+
+```ts
+type Issue = {
+  id: string;          // 중복 판정 키
+  shortId: string;     // 4TH-SILO-1
+  level: string;       // error, warning
+  errorType: string;   // metadata.type, 예: TypeError
+  culprit: string;     // 발생 위치(함수 또는 라우트)
+  count: string;
+  firstSeen: string;
+  permalink: string;
+};
+```
+
+제목(`title`)과 오류 메시지(`metadata.value`)는 타입에 넣지 않는다. 질문 원문이 오류 메시지에 섞여 들어와도 스크립트가 그 필드를 읽지 않으므로 Slack으로 나가지 않는다. 보낼 필드를 허용 목록으로 정하면, Sentry 응답에 필드가 늘어도 원문이 새지 않는다. 이 방식으로 이슈 4-43의 완료 기준인 "알림에 질문 원문과 이메일이 담기지 않음"을 지킨다.
+
+### 상태
+
+Apps Script의 Script Properties에 다음 값을 둔다.
+
+| 키 | 종류 | 내용 |
+| --- | --- | --- |
+| `SENTRY_TOKEN` | 비밀 | `event:read` 권한의 개인 토큰 |
+| `SLACK_WEBHOOK_URL` | 비밀 | Slack Incoming Webhook URL |
+| `SENTRY_ORG` | 설정 | `eb5a968646b3` |
+| `SENTRY_PROJECT_ID` | 설정 | `4512343569793024` |
+| `SINCE` | 상태 | 설치 시각. 첫 실행에서 이전 이슈가 한꺼번에 가는 것을 막는다 |
+| `NOTIFIED_IDS` | 상태 | 이미 보낸 이슈 ID 목록(최근 100개)을 담은 JSON 문자열 |
+
+"마지막으로 본 시각" 하나만 기준으로 삼지 않고, 보낸 이슈 ID 목록을 상태로 둔다. 시각 하나만 쓰면 같은 시각에 생긴 이슈나 Sentry가 늦게 색인한 이슈를 놓칠 수 있다 (추정).
+
+### 실행 흐름
+
+1. `LockService`로 잠금을 건다. 이전 실행이 끝나지 않았으면 이번 실행을 끝낸다.
+2. Sentry API를 호출한다. 200이 아니면 예외를 던진다.
+3. 응답을 `Issue[]`로 바꾸고, `NOTIFIED_IDS`에 없는 이슈만 남긴다. 이 단계는 입력만으로 결과가 정해지는 순수 함수로 만든다.
+4. 이슈마다 Slack에 보내고, 전송에 성공할 때마다 그 ID를 `NOTIFIED_IDS`에 저장한다.
+
+전송과 저장 사이에 스크립트가 멈추면 다음 실행에서 같은 알림을 한 번 더 보낸다. 알림을 놓치는 것보다 중복이 낫다고 판단해 이 순서를 골랐다. 몇 번을 다시 실행해도 "새 이슈를 모두 한 번 이상 보냈다"는 같은 상태에 도달한다.
+
+### Slack 메시지 예시
+
+메시지는 Slack Block Kit으로 보낸다. 제목 줄에 레벨과 이슈 ID를 두고, 그 아래에 항목 네 개를 2열로 놓고, Sentry 링크는 버튼으로 둔다. 알림 미리보기에는 `🚨 오류: TypeError (4TH-SILO-3)` 같은 한 줄이 보인다.
+
+```
+🚨 오류 · 4TH-SILO-3
+오류 종류            발생 위치
+`TypeError`          `POST /api/questions`
+처음 발생            발생 횟수
+10월 30일 16:02      1회
+[Sentry에서 보기]
+```
+
+2026-10-30 첫 시험에서는 네 줄짜리 일반 텍스트로 보냈는데, 개발자가 읽기 어렵다고 해서 이 형식으로 바꿨다.
+
+Sentry 링크는 개발자만 열 수 있다. PO는 메시지로 오류가 났다는 사실만 알고, 자세한 내용은 개발자에게 확인한다. ADR 0005의 "결과" 절과 같은 전제다.
+
+## 스크립트가 멈췄을 때
+
+토큰이 폐기되거나 Sentry가 API를 막으면 스크립트가 조용히 멈춘다. PO는 알림도, 알림이 끊겼다는 사실도 받지 못한다. 이 위험에 두 가지로 대비한다.
+
+- Apps Script 트리거의 실패 알림을 "즉시"로 설정한다. 실행 흐름 2단계에서 예외를 던지므로, 실패하면 개발자 Gmail로 메일이 온다.
+- Sentry에 "새 이슈가 생기면 개발자에게 메일" 알림 규칙을 하나 만든다. 두 번째 알림 경로가 되고, 이슈 4-43의 첫 번째 할 일도 채운다.
+
+## 코드 위치와 배포
+
+- `tools/sentry-slack-alert/Code.gs` 파일 하나를 저장소에 둔다. 리뷰와 이력 관리를 위해서다. 배포는 Apps Script 편집기에 붙여 넣어서 하고, clasp는 쓰지 않는다.
+- `.gs` 확장자는 ESLint와 `tsc` 대상이 아니라 `npm run check`에 영향을 주지 않는다.
+- 편집기에서 `setup`을 한 번 실행하면 `SINCE`와 `NOTIFIED_IDS`를 채우고 5분 트리거를 만든 뒤 Sentry 조회를 한 번 시험한다. 다시 실행해도 트리거가 늘지 않는다.
+- 비밀값은 Script Properties에만 둔다. `lib/env.ts` 규칙은 Next.js 앱 코드에만 적용한다.
+
+## 작업 순서
+
+1. ADR 0005를 고친다. 알림 전달 방식을 Apps Script와 Slack Webhook으로 바꾸고, 대안 표와 "API가 막히면 예비안으로 바꾼다"는 조건을 적는다. `dev-rules.md`에도 반영한다. (2026-10-30 ADR 0005 반영)
+2. 조직 단위 엔드포인트와 `firstSeen` 쿼리가 동작하는지 확인한다. (2026-10-30 완료)
+3. Slack Incoming Webhook을 만든다. (2026-10-30 완료)
+4. `Code.gs`를 작성하고 배포한다. (2026-10-30 완료)
+5. 일부러 오류를 내서 Slack으로 받았는지, 메시지에 질문 원문과 이메일이 없는지 확인한다. (2026-10-30 개발자 채널에서 완료)
+6. 개발자가 PO를 `#프로젝트-4차-오류-알림`에 초대한다.
+
+## 확인 필요
+
+- Sentry가 무료 요금제의 API 접근을 나중에 막을 수 있다. 가격표에 `API: No`로 적혀 있기 때문이다.
+- 시험 오류는 앱이 아니라 앱과 같은 DSN을 쓰는 `@sentry/node` 스크립트로 보냈다. 배포한 앱에서 난 오류도 같은 경로로 오는지는 아직 보지 않았다.
+- Slack 채널은 비공개 채널 `#프로젝트-4차-오류-알림`이다. 2026-10-30 기준 멤버는 개발자 1명이고, PO는 아직 초대하지 않았다. 이슈 4-43의 완료 기준인 "PO가 알림을 받는다"는 PO를 초대해야 채워진다.
+- 워크스페이스의 Slack 앱 설치 한도가 다시 차더라도 이미 설치한 Webhook 앱은 계속 동작할 것으로 본다 (추정).
+
+## 다시 물어볼 질문
+
+- Slack 알림이 PO에게 너무 잦으면, 같은 이슈의 반복 발생(regression)도 알릴지 정해야 하는가?
+- 스프린트가 끝난 뒤 이 스크립트와 토큰을 언제 정리하는가?

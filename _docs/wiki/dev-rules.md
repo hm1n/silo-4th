@@ -36,7 +36,7 @@
 | [0002](adr/0002-raw-protection-in-repo.md) | raw 원본 수정 차단은 저장소의 Claude Code 훅으로 한다 | 확정 |
 | [0003](adr/0003-neon-postgres-drizzle.md) | 기록 저장은 Neon Postgres에 하고, Drizzle ORM으로 접근한다 | 확정 |
 | [0004](adr/0004-social-login.md) | 소셜 로그인으로 학습자를 구분한다 (인증 도구와 공급자는 정하지 않았다) | 확정 |
-| [0005](adr/0005-sentry-error-monitoring.md) | 오류 모니터링은 Sentry 무료 요금제로 하고, 알림은 메일 전달로 PO에게 보낸다 | 확정 |
+| [0005](adr/0005-sentry-error-monitoring.md) | 오류 모니터링은 Sentry 무료 요금제로 하고, 알림은 Apps Script로 Slack에 보낸다 | 확정 |
 
 ## 아직 도입하지 않은 규칙
 
