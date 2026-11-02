@@ -31,8 +31,11 @@ Sentry 무료 요금제(Developer)와 `@sentry/nextjs`로 서버와 브라우저
 2026-11-02 4-48 로그인에서 정한 처리 방식: Drizzle 오류 메시지는 `Failed query: <SQL>` 다음 줄에 `params: <값>`을 붙인다. 로그인 쿼리에서는 이 자리에 access token, id token, 세션 토큰, IP, User-Agent가 들어간다. Better Auth의 라우터는 예외를 이 원본 그대로 `console.error`로 찍고, 세션 조회 오류는 원본을 `cause`에 달아 던진다. 그래서 인증 경계에서 다음과 같이 막는다. (근거: `node_modules/drizzle-orm/errors.js`, `node_modules/better-call/dist/router.mjs`, `node_modules/better-auth/dist/api/routes/session.mjs`)
 
 - `lib/auth/sentry-logger.ts`의 `safeMessage`가 `params:` 뒤를 지우고 이메일을 가린다. `reportAuthError`는 이 메시지만 서버 로그와 Sentry에 남긴다. Better Auth 로거도 이 두 함수를 쓴다.
-- Better Auth 설정에 `onAPIError.throw`를 켜 원본을 찍는 라우터 기본 처리를 건너뛰고, `app/api/auth/[...all]/route.ts`가 예외를 잡아 정리한 메시지만 남긴다. 로그인 콜백 같은 GET 요청은 `/?error=internal_server_error`로 보내고, POST 요청은 500 JSON을 돌려준다.
+- Better Auth 설정에 `onAPIError.throw`를 켜 원본을 찍는 라우터 기본 처리를 건너뛰고, `app/api/auth/[...all]/route.ts`가 예외를 잡아 정리한 메시지만 남긴다. 로그인 콜백처럼 브라우저가 화면을 옮기는 요청은 `/?error=internal_server_error`로 보내고, fetch 요청은 500 JSON을 돌려준다. `sec-fetch-mode` 헤더로 구분하고, 이 헤더를 보내지 않는 오래된 브라우저의 GET 요청은 화면 이동으로 본다.
+- `safeMessage`는 지운 쿼리 값 대신 원인을 찾을 단서로 오류 코드를 덧붙인다. Postgres 오류 코드나 Node 오류 코드에는 값이 담기지 않는다.
+- Better Auth는 DB 호출마다 추적 구간을 만들고, 실패하면 원본 메시지를 구간 상태에 넣는다. Sentry는 이 상태를 성능 데이터로 보낸다. Sentry에 Better Auth 구간이 실제로 쌓이는 것을 확인하고 `experimental.instrumentation.enabled`를 껐다. (근거: `node_modules/@better-auth/core/dist/instrumentation/tracer.mjs`)
 - `findLearner`는 세션 조회 오류를 `cause` 없이 정리한 메시지로 다시 던진다. Next.js가 이 오류를 Sentry로 보내도 원본은 실리지 않는다.
+- 같은 날 다른 경로도 점검했다. Drizzle의 추적 구간은 OpenTelemetry를 연결하는 코드가 없어 만들어지지 않는다. Next.js 추적은 요청 밖으로 나간 예외만 기록하는데, 라우트 핸들러와 `findLearner`가 정리한 메시지만 내보낸다. OAuth 콜백 URL의 `code`, `state`는 Sentry 서버 요청 구간에 `[Filtered]`로 저장되는 것을 확인했다. 최근 7일 오류 이벤트에 쿼리 값이 담긴 것은 없었다.
 - test 브랜치에서 세션 저장과 세션 조회를 일부러 실패시켜, 고치기 전에는 `params:`와 User-Agent가 로그에 남고 고친 뒤에는 남지 않는 것을 확인했다.
 
 다음은 Claude가 제안했고 개발자가 아직 정하지 않았다. `제안`

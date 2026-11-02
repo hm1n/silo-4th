@@ -8,9 +8,13 @@ Linear 4-48에서 구현한 Google 로그인의 구조와 흐름을 정리한다
 | --- | --- | --- |
 | 첫 로그인 저장 | 학습자와 계정을 따로 저장해, 계정 저장만 실패하면 다시 로그인할 수 없는 학습자가 남았다 | Pool 드라이버의 트랜잭션으로 함께 저장하고 함께 취소한다 |
 | 인증 중 DB 오류 | 원본 오류가 토큰, IP와 함께 서버 로그와 Sentry에 남고, 로그인은 빈 500 화면으로 끝났다 | 정리한 메시지만 남기고, 로그인은 `/?error=internal_server_error`로 돌아온다 |
-| 세션 연장 | DB 만료일만 늘고 쿠키는 로그인 7일 뒤 만료됐다 | 브라우저의 세션 확인이 하루에 한 번 쿠키와 DB를 함께 7일로 늘린다 |
+| 세션 연장 | DB 만료일만 늘고 쿠키는 로그인 7일 뒤 만료됐다 | 페이지를 처음 열 때와 탭으로 돌아올 때 브라우저가 세션을 확인하고, 하루에 한 번 쿠키와 DB를 함께 7일로 늘린다 |
 | 로그인, 로그아웃 버튼 | 실패해도 아무 표시가 없고 두 번 누를 수 있었다 | 요청 중 비활성화하고, 실패하면 다시 시도 안내를 보여 준다 |
 | 로그아웃 뒤 화면 | `router.push("/")` | `router.refresh()` |
+| Better Auth 추적 구간 | 실패한 DB 호출의 원본 메시지가 Sentry 성능 데이터로 갔다 | Better Auth 추적을 껐다 |
+| 쉬던 DB 연결이 끊길 때 | Pool에 오류 처리가 없어 서버 프로세스가 끝날 수 있었다 | 오류 메시지만 서버 로그에 남기고 다음 쿼리는 새 연결로 처리한다. 이 오류에는 쿼리 값이 담기지 않는다 |
+| `/api/auth` 예외 응답 | GET 요청이면 모두 `/`로 보내, fetch 요청도 HTML을 받았다 | 브라우저 화면 이동과 `sec-fetch-mode` 헤더가 없는 GET만 `/`로 보내고, 나머지는 500 JSON을 돌려준다 |
+| 오류 메시지 | 쿼리 값을 지우면서 실패 원인도 사라졌다 | Postgres나 Node의 오류 코드를 덧붙인다 |
 
 ## 한눈에 보기
 
@@ -75,16 +79,16 @@ flowchart LR
 
 | 파일 | 역할 |
 | --- | --- |
-| `lib/db/index.ts` | `drizzle-orm/neon-serverless` Pool 연결을 첫 호출에서 만든다 |
+| `lib/db/index.ts` | `drizzle-orm/neon-serverless` Pool 연결을 첫 호출에서 만들고, 쉬던 연결이 끊길 때 나는 오류를 받는다 |
 | `lib/auth/providers.ts` | 브라우저와 서버가 함께 쓰는 공급자 목록이다. 비밀값은 두지 않는다 |
-| `lib/auth/index.ts` | Better Auth 설정을 만든다. 트랜잭션을 켜고, API 오류가 아닌 예외는 라우트로 던지게 한다. `findLearner`는 세션을 연장하지 않고, 오류는 정리해서 다시 던진다 |
+| `lib/auth/index.ts` | Better Auth 설정을 만든다. 트랜잭션을 켜고, API 오류가 아닌 예외는 라우트로 던지게 한다. Better Auth 추적 구간은 끈다. `findLearner`는 세션을 연장하지 않고, 오류는 정리해서 다시 던진다 |
 | `lib/auth/client.ts` | 브라우저의 Better Auth 클라이언트와, 요청 성공 여부를 판정하는 `succeeded`가 있다 |
 | `lib/auth/login-notice.ts` | `?error=` 코드를 학습자에게 보여 줄 문구로 바꾼다 |
-| `lib/auth/sentry-logger.ts` | `safeMessage`가 쿼리 값과 이메일을 지우고, `reportAuthError`가 그 메시지만 로그와 Sentry에 남긴다 |
-| `app/api/auth/[...all]/route.ts` | `/api/auth/*` 요청을 Better Auth로 넘기고, 예외는 정리해서 GET은 `/?error=`로, POST는 500 JSON으로 돌려준다 |
+| `lib/auth/sentry-logger.ts` | `safeMessage`가 쿼리 값과 이메일을 지우고 오류 코드를 덧붙이며, `reportAuthError`가 그 메시지만 로그와 Sentry에 남긴다 |
+| `app/api/auth/[...all]/route.ts` | `/api/auth/*` 요청을 Better Auth로 넘기고, 예외는 정리해서 브라우저 화면 이동이면 `/?error=`로, 나머지는 500 JSON으로 돌려준다 |
 | `app/_components/social-login-buttons.tsx` | 켜진 공급자마다 버튼을 그리고, 요청 중 비활성화와 실패 안내를 맡는다 |
 | `app/_components/sign-out-button.tsx` | 로그아웃이 성공하면 화면을 다시 그리고, 실패하면 안내를 보여 준다 |
-| `app/_components/session-refresh.tsx` | 페이지를 열 때 브라우저에서 세션을 한 번 확인해 쿠키 연장을 맡긴다 |
+| `app/_components/session-refresh.tsx` | `useSession`으로 페이지를 처음 열 때와 탭으로 돌아올 때 세션을 확인해 쿠키 연장을 맡긴다 |
 | `app/page.tsx` | 4-51에서 첫 화면을 만들기 전까지 로그인 확인용 화면이다 |
 
 ## 로그인 성공 흐름
@@ -189,7 +193,7 @@ sequenceDiagram
     P-->>B: 로그인 버튼
   end
 
-  Note over B,DB: 세션 연장. 루트 레이아웃의 SessionRefresh
+  Note over B,DB: 세션 연장. 루트 레이아웃의 SessionRefresh가 처음 열 때와 탭으로 돌아올 때
   B->>A: GET /api/auth/get-session
   alt 마지막 연장 뒤 하루가 지남
     A->>DB: expires_at을 7일 뒤로 갱신
