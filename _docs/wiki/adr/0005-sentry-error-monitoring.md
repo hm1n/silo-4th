@@ -3,6 +3,7 @@
 - 상태: 확정
 - 결정 날짜: 2026-10-30
 - 결정한 사람: 개발자
+- 수정: 2026-11-02, 4-48 로그인 코드 리뷰에서 DB 오류 메시지에 쿼리 값이 담기는 것을 찾아 "결정"에 규칙 하나와 처리 방식을 더했다
 - 관련 문서: [오류 모니터링 도구 결정](../../raw/2026-10-30-monitoring-sentry.md), [Sentry 오류 알림을 Slack으로 보내는 시스템](../prd/sentry-slack-alert.md), [기술 스택](../tech-stack.md), [개발 규칙](../dev-rules.md)
 
 ## 상황
@@ -19,12 +20,24 @@ Sentry 무료 요금제(Developer)와 `@sentry/nextjs`로 서버와 브라우저
 
 - 세션 리플레이를 켜지 않는다.
 - 오류와 함께 보내는 정보(breadcrumb, extra, context)에 질문 원문과 이메일을 넣지 않는다.
+- DB 오류는 원본 그대로 서버 로그나 Sentry로 보내지 않는다. Drizzle 오류 메시지는 `params:` 뒤에 쿼리 값을 붙이므로, 그 뒤를 지우고 이메일을 가린 메시지 문자열만 남긴다.
 - Slack 메시지에는 허용한 필드(이슈 ID, 레벨, 오류 종류, 발생 위치, 발생 횟수, 처음 발생 시각, Sentry 링크)만 담는다. 이슈 제목과 오류 메시지는 스크립트가 읽지 않는다.
 - Sentry 토큰과 Slack Webhook URL은 Apps Script의 Script Properties에만 둔다.
 
 2026-10-30 연동 때 확인한 내용: `@sentry/nextjs` v11에는 `sendDefaultPii`가 없고, `dataCollection`의 기본값이 사용자 정보, HTTP 본문과 헤더, 쿠키, 쿼리, LLM 입출력(`genAI`), 스택 프레임 로컬 변수를 모두 수집한다. 그래서 `lib/sentry.ts`의 공용 설정에서 이 항목을 모두 명시적으로 끄고, 서버, edge, 브라우저 초기화가 이 설정 하나를 함께 쓴다. (근거: `node_modules/@sentry/core/build/types/types/datacollection.d.ts`)
 
 2026-10-30에 확인한 충돌: Sentry 가격표는 무료 요금제를 `API: No`로 표시한다. 하지만 개발자가 `event:read` 권한의 개인 토큰으로 issues API를 호출했을 때 200 응답을 받았다. 이 결정은 실제 호출 결과에 기대고 있다. (근거: [Sentry 가격표](https://sentry.io/pricing/), [Sentry 오류 알림을 Slack으로 보내는 시스템](../prd/sentry-slack-alert.md) "확인된 내용")
+
+2026-11-02 4-48 로그인에서 정한 처리 방식: Drizzle 오류 메시지는 `Failed query: <SQL>` 다음 줄에 `params: <값>`을 붙인다. 로그인 쿼리에서는 이 자리에 access token, id token, 세션 토큰, IP, User-Agent가 들어간다. Better Auth의 라우터는 예외를 이 원본 그대로 `console.error`로 찍고, 세션 조회 오류는 원본을 `cause`에 달아 던진다. 그래서 인증 경계에서 다음과 같이 막는다. (근거: `node_modules/drizzle-orm/errors.js`, `node_modules/better-call/dist/router.mjs`, `node_modules/better-auth/dist/api/routes/session.mjs`)
+
+- `lib/auth/sentry-logger.ts`의 `safeMessage`가 `params:` 뒤를 지우고 이메일을 가린다. `reportAuthError`는 이 메시지만 서버 로그와 Sentry에 남긴다. Better Auth 로거도 이 두 함수를 쓴다.
+- Better Auth 설정에 `onAPIError.throw`를 켜 원본을 찍는 라우터 기본 처리를 건너뛰고, `app/api/auth/[...all]/route.ts`가 예외를 잡아 정리한 메시지만 남긴다. 로그인 콜백 같은 GET 요청은 `/?error=internal_server_error`로 보내고, POST 요청은 500 JSON을 돌려준다.
+- `findLearner`는 세션 조회 오류를 `cause` 없이 정리한 메시지로 다시 던진다. Next.js가 이 오류를 Sentry로 보내도 원본은 실리지 않는다.
+- test 브랜치에서 세션 저장과 세션 조회를 일부러 실패시켜, 고치기 전에는 `params:`와 User-Agent가 로그에 남고 고친 뒤에는 남지 않는 것을 확인했다.
+
+다음은 Claude가 제안했고 개발자가 아직 정하지 않았다. `제안`
+
+- 인증 밖의 DB 오류, 예를 들어 질문과 기록 저장 오류는 아직 이 처리를 거치지 않는다. 그 기능을 만들 때 같은 방식으로 경계에서 정리하거나, `lib/sentry.ts`의 `beforeSend`와 `beforeBreadcrumb`에서 `params:` 뒤를 지우는 처리를 앱 전체에 더한다. 후자는 Vercel 로그에 찍히는 원본은 막지 못한다.
 
 ## 검토한 대안
 
