@@ -36,7 +36,7 @@
 | [0001](adr/0001-ai-coding-rule-enforcement.md) | AI 코딩 규칙은 md보다 검사 도구로 강제한다 | 확정 |
 | [0002](adr/0002-raw-protection-in-repo.md) | raw 원본 수정 차단은 저장소의 Claude Code 훅으로 한다 | 확정 |
 | [0003](adr/0003-neon-postgres-drizzle.md) | 기록 저장은 Neon Postgres에 하고, Drizzle ORM으로 접근한다 | 확정 |
-| [0004](adr/0004-social-login.md) | 소셜 로그인으로 학습자를 구분한다 (인증 도구와 공급자는 정하지 않았다) | 확정 |
+| [0004](adr/0004-social-login.md) | 소셜 로그인으로 학습자를 구분하고, 공급자는 Google, 인증 도구는 Better Auth를 쓴다 | 확정 |
 | [0005](adr/0005-sentry-error-monitoring.md) | 오류 모니터링은 Sentry 무료 요금제로 하고, 알림은 Apps Script로 Slack에 보낸다 | 확정 |
 | [0006](adr/0006-test-strategy.md) | 테스트는 노션 DB에서 확정한 케이스만 옮긴다. 단위는 Vitest, E2E는 Playwright로 하고, 통합 테스트는 DB를 변경하는 서버 코드에만 둔다 | 확정 |
 
