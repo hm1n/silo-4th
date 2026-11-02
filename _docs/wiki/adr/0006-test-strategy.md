@@ -58,6 +58,7 @@ React Testing Library로 하는 컴포넌트 테스트는 두지 않는다. 화�
 - 기록 저장과 학습자별 접근 제한을 실제 DB로 확인하므로, AI가 쿼리 조건을 빠뜨려도 화면이 멀쩡해 보이는 문제를 잡는다.
 - 테스트 DB가 필요하다. Neon 브랜치 하나를 테스트 전용으로 둔다. 통합 테스트는 DB를 오가므로 단위 테스트보다 느리고, 실행 명령을 나눠야 한다.
 - 케이스 원본이 노션에 있어 `_docs/CLAUDE.md`의 "원본이 다르면 Linear를 우선한다"는 원칙의 예외가 생긴다. 테스트 케이스에 한해서는 노션 DB가 원본이고, 저장소의 확정 케이스 문서는 노션에서 내보낸 사본이다.
+- 2026-11-02에 `vitest` `5.0.5`와 `@playwright/test` `1.64.1`을 설치했다. 단위와 통합은 `vitest.config.ts`의 `projects`로 나누고, 파일 이름을 각각 `*.test.ts`, `*.integration.test.ts`로 짓는다. 실행 명령은 `npm test`, `npm run test:integration`, `npm run test:e2e`다. tsconfig 경로는 Vite 8의 `resolve.tsconfigPaths`로 풀어 Next.js 문서가 안내하는 `vite-tsconfig-paths`를 쓰지 않았다. `lib/db`가 import하는 `server-only`는 Next.js 밖에서 오류를 던지므로 Vitest에서는 빈 모듈로 바꾼다. 화면을 그리지 않으므로 `jsdom`과 `@vitejs/plugin-react`도 설치하지 않았다. E2E는 서비스가 PC 전용이라 Desktop Chrome 하나로만 돌린다.
 - 노션 DB 구조는 계획서의 속성 표를 따른다. 케이스 ID, PRD 기능 번호, 테스트 유형, 상황, 행동, 기대 결과, 우선순위, 상태, 담당자다. (근거: `raw/2026-11-02-test-adoption-plan.md` "노션 데이터베이스 구조")
 
 다음은 Claude가 제안했고 개발자가 아직 정하지 않았다. 모두 `제안`이다. 정하면 이 ADR과 [개발 규칙](../dev-rules.md)을 고친다.
