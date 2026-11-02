@@ -37,6 +37,7 @@
 | [0003](adr/0003-neon-postgres-drizzle.md) | 기록 저장은 Neon Postgres에 하고, Drizzle ORM으로 접근한다 | 확정 |
 | [0004](adr/0004-social-login.md) | 소셜 로그인으로 학습자를 구분한다 (인증 도구와 공급자는 정하지 않았다) | 확정 |
 | [0005](adr/0005-sentry-error-monitoring.md) | 오류 모니터링은 Sentry 무료 요금제로 하고, 알림은 Apps Script로 Slack에 보낸다 | 확정 |
+| [0006](adr/0006-test-strategy.md) | 테스트는 노션 DB에서 확정한 케이스만 옮긴다. 단위는 Vitest, E2E는 Playwright로 하고, 통합 테스트는 DB를 변경하는 서버 코드에만 둔다 | 확정 |
 
 ## 아직 도입하지 않은 규칙
 
@@ -49,7 +50,9 @@
 | `lib/db` 밖 서버 코드의 `server-only` 적용 위치 | 서버 코드의 디렉터리 구조 |
 | Edge runtime 금지, `cacheComponents` 관련 규칙 | Next.js 설정을 유지할지 여부 |
 | `.claude/rules/` 경로별 규칙과 기준 예시 파일 | 디렉터리 구조 |
-| 테스트 도구, CI, pre-commit | 의존성과 배포 방식 |
+| Vitest와 Playwright 설치, 유형별 실행 명령 | 도구는 0006에서 정했다. 통합 테스트는 기록 구조 회의 뒤 스키마가 정해져야 쓸 수 있다 |
+| 확정 테스트 수정 차단 훅, 케이스 ID 검사, Stop 훅의 테스트 범위 | 0006의 `제안` 항목을 개발자가 정하는 일 |
+| CI, pre-commit | 의존성과 배포 방식 |
 
 LLM 출력 스키마 규칙은 이번 스프린트에서 AI가 개념을 고르거나 문제를 만들지 않아 필요하지 않다. (근거: `raw/2026-10-30-tech-stack-decisions.md` "확정한 것")
 
