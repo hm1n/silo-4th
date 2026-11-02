@@ -4,6 +4,7 @@
 - 결정 날짜: 2026-11-02
 - 결정한 사람: 개발자
 - 수정: 2026-11-02, 확정 케이스를 저장소의 마크다운으로 내보내던 결정을 바꿔 노션 DB만 원본으로 두고 저장소에 사본을 만들지 않기로 했다
+- 수정: 2026-11-02, 4-48에서 통합 테스트용 Neon `test` 브랜치와 `.env.test.local`을 만든 결과를 "결과"에 적었다
 - 관련 문서: [노션 Test-case DB](https://app.notion.com/p/40ce7e8fdd1280268097ef263f610f7a), [AI 주도 개발 테스트 도입 계획서](../../raw/2026-11-02-test-adoption-plan.md), [테스트 도입 결정](../../raw/2026-11-02-test-adoption-decisions.md), [0001. AI 코딩 규칙은 검사 도구로 강제한다](0001-ai-coding-rule-enforcement.md), [0003. Neon Postgres와 Drizzle](0003-neon-postgres-drizzle.md), [0004. 소셜 로그인](0004-social-login.md)
 
 ## 상황
@@ -59,6 +60,7 @@ React Testing Library로 하는 컴포넌트 테스트는 두지 않는다. 화�
 - AI가 쓸 수 있는 테스트가 확정된 케이스로 한정되어, 테스트가 구현에 끌려가거나 의미 없이 늘어나는 일을 줄인다.
 - 기록 저장과 학습자별 접근 제한을 실제 DB로 확인하므로, AI가 쿼리 조건을 빠뜨려도 화면이 멀쩡해 보이는 문제를 잡는다.
 - 테스트 DB가 필요하다. Neon 브랜치 하나를 테스트 전용으로 둔다. 통합 테스트는 DB를 오가므로 단위 테스트보다 느리고, 실행 명령을 나눠야 한다.
+- 2026-11-02 4-48에서 운영 브랜치를 부모로 Neon `test` 브랜치를 만들었다. 마이그레이션은 이 브랜치에 먼저 적용한다. 주소와 키는 저장소에 올리지 않는 `.env.test.local`에 두고, `vitest.config.ts`가 통합 테스트 프로젝트에만 이 파일을 읽어 넣는다. 원격 DB를 여러 번 오가므로 통합 테스트의 제한 시간을 30초로 늘렸다. 파일에 넣을 키는 저장소 루트 `README.md`의 "통합 테스트" 항목에 있다.
 - 케이스 원본이 노션에 있어 `_docs/CLAUDE.md`의 "원본이 다르면 Linear를 우선한다"는 원칙의 예외가 생긴다. 테스트 케이스에 한해서는 노션 DB가 원본이고, 저장소에는 사본을 두지 않는다.
 - AI가 테스트를 쓰려면 노션에 접근할 수 있어야 한다. 노션 MCP나 `ntn` CLI로 Test-case DB를 조회한다.
 - 2026-11-02에 `vitest` `5.0.5`와 `@playwright/test` `1.64.1`을 설치했다. 단위와 통합은 `vitest.config.ts`의 `projects`로 나누고, 파일 이름을 각각 `*.test.ts`, `*.integration.test.ts`로 짓는다. 실행 명령은 `npm test`, `npm run test:integration`, `npm run test:e2e`다. tsconfig 경로는 Vite 8의 `resolve.tsconfigPaths`로 풀어 Next.js 문서가 안내하는 `vite-tsconfig-paths`를 쓰지 않았다. `lib/db`가 import하는 `server-only`는 Next.js 밖에서 오류를 던지므로 Vitest에서는 빈 모듈로 바꾼다. 화면을 그리지 않으므로 `jsdom`과 `@vitejs/plugin-react`도 설치하지 않았다. E2E는 서비스가 PC 전용이라 Desktop Chrome 하나로만 돌린다.
