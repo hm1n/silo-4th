@@ -14,8 +14,14 @@ function signedSessionCookie(token: string) {
   return encodeURIComponent(`${token}.${signature}`);
 }
 
-export const test = base.extend({
-  context: async ({ context, baseURL }, provide) => {
+export function daysFromNow(days: number) {
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+// 시험 날짜와 저장 동의는 한 폼에서 함께 저장하므로, 테스트 학습자도 둘 다 있거나 둘 다 없다.
+export const test = base.extend<{ consented: boolean }>({
+  consented: [true, { option: true }],
+  context: async ({ context, baseURL, consented }, provide) => {
     const [created] = await db
       .insert(learner)
       .values({
@@ -23,7 +29,7 @@ export const test = base.extend({
         email: `${randomUUID()}@e2e.test`,
         source: TEST_SOURCE,
         isTest: true,
-        consentedAt: new Date(),
+        ...(consented && { consentedAt: new Date(), examDate: daysFromNow(30) }),
       })
       .returning({ id: learner.id });
     if (!created || !baseURL) throw new Error("E2E 학습자를 만들지 못했다.");
