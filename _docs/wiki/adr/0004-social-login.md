@@ -7,7 +7,8 @@
 - 수정: 2026-11-02, 공급자를 Google로, 인증 도구를 Better Auth로 정해 제목, 결정, 대안, 결과를 채웠다
 - 수정: 2026-11-02, 4-48을 구현하며 확인한 결과를 "결과"에 적었다. 계정 자동 연결은 껐다. 트랜잭션 없이는 가입이 중간에 실패할 때 학습자가 잠기는 것을 찾아 DB 드라이버를 Pool 방식으로 바꿨다
 - 수정: 2026-11-02, 커밋 전 코드 리뷰에서 정한 세션 연장 방식과 인증 오류 처리를 "결과"에 적었다
-- 관련 문서: [소셜 로그인 도입 결정](../../raw/2026-10-30-social-login-decision.md), [스프린트 1 기술 스택 결정](../../raw/2026-10-30-tech-stack-decisions.md), [기술 스택](../tech-stack.md), [0003. Neon Postgres와 Drizzle](0003-neon-postgres-drizzle.md), [Linear 4-48 소셜 로그인으로 학습자 구분하기](https://linear.app/silo0/issue/4-48)
+- 수정: 2026-11-03, 4-49를 구현하며 정한 학습자 필드 위치, 테이블 이름, `id` 타입, 출처 기록 방식을 "결과"에 적었다
+- 관련 문서: [소셜 로그인 도입 결정](../../raw/2026-10-30-social-login-decision.md), [스프린트 1 기술 스택 결정](../../raw/2026-10-30-tech-stack-decisions.md), [기술 스택](../tech-stack.md), [0003. Neon Postgres와 Drizzle](0003-neon-postgres-drizzle.md), [Linear 4-48 소셜 로그인으로 학습자 구분하기](https://linear.app/silo0/issue/4-48), [Linear 4-49 출처 기록하기](https://linear.app/silo0/issue/4-49)
 
 ## 상황
 
@@ -47,16 +48,16 @@ Better Auth를 고른 이유는 세 가지다.
 ## 결과
 
 - 본인만 자기 기록에 들어갈 수 있어, 다른 사람의 이메일로 기록이 섞이는 문제가 사라진다.
-- 학습자는 Better Auth의 `user`, 로그인 계정은 `account`에 대응한다. `account`에는 공급자와 공급자 계정 ID가 들어가므로, 학습자를 이메일이 아닌 공급자 계정 ID로 찾는다는 4-48의 원칙을 지킬 수 있다. 시험 날짜, 저장 동의, 출처는 `user`에 필드를 덧붙이거나 별도 테이블로 두고, 어느 쪽인지는 4-11 기록 구조 회의 결과에 맞춘다.
+- 학습자는 Better Auth의 `user`, 로그인 계정은 `account`에 대응한다. `account`에는 공급자와 공급자 계정 ID가 들어가므로, 학습자를 이메일이 아닌 공급자 계정 ID로 찾는다는 4-48의 원칙을 지킬 수 있다. 시험 날짜, 저장 동의, 출처, 테스트 학습자 표시는 4-11 기록 구조 회의 결과인 [05-1 기록 구조 테이블 설계](https://linear.app/silo0/document/05-1-기록-구조-테이블-설계-0c3075a457c4)에 맞춰 `learners`의 `exam_date`, `consented_at`, `source`, `is_test` 컬럼으로 둔다. Better Auth의 `user.additionalFields`에 `input: false`로 등록해 `getCurrentLearner()` 결과에는 함께 나오고, 로그인 요청이나 `/update-user` 요청으로는 바꿀 수 없다.
 - 카카오와 네이버는 Better Auth가 공급자로 지원하므로, 설정과 환경 변수를 더해 추가한다. 추가 절차는 [로그인 공급자 추가 절차](../social-login-providers.md)에 있다.
 - 공급자마다 OAuth 앱을 등록해야 한다. Google OAuth 앱이 테스트 상태면 등록한 테스트 사용자만 로그인할 수 있으므로, 11/5 학습자 공개 전에 운영 상태로 바꿔야 한다.
-- 출처 `?from=` 값을 로그인 이동 중에 잃지 않게 하는 일과 `from=test` 테스트 학습자 구분은 이슈 4-49에서 정한다.
+- 출처 `?from=` 값은 `proxy.ts`가 `from` 쿠키에 담아 로그인 이동 중에도 남기고, 학습자를 만들 때 Better Auth의 `databaseHooks.user.create.before`가 읽어 `source`와 `is_test`에 저장한다. 값 형식과 쿠키 규칙은 [기술 스택](../tech-stack.md) "출처 기록"에 있다.
 - 소셜 계정에서 받는 개인 정보인 이름, 이메일, 프로필 사진 중 무엇을 저장하고 어디에 보내지 않을지 정해야 한다. 이메일은 11/15 설문 발송에 필요하다. (근거: [03 상세 일정](https://linear.app/silo0/document/03-상세-일정-1f1a08402713) "발표 뒤")
 
 구현을 시작할 때 확인하기로 한 항목은 2026-11-02 4-48 구현에서 다음과 같이 확인했다.
 
 - **`neon-http` 트랜잭션.** Better Auth Drizzle 어댑터의 `transaction` 기본값이 `false`라 `neon-http`에서도 오류 없이 학습자와 계정을 만든다. 그런데 이 상태에서는 계정 저장만 실패해도 학습자가 남고, 계정 자동 연결이 꺼져 있어 그 학습자는 다시 로그인할 수 없다. 커밋 전 코드 리뷰에서 이를 찾아 [0003](0003-neon-postgres-drizzle.md)에 적은 대로 드라이버를 Pool 방식으로 바꾸고 `transaction: true`를 켰다. test 브랜치에서 계정 저장만 실패하게 만들면 트랜잭션을 켰을 때 학습자 행이 남지 않는다.
-- **계정 자동 연결.** `account.accountLinking.enabled`를 `false`로 두어 껐다. 그런데 `learner.email`이 고유값이라, Google로 가입한 이메일로 다른 공급자에 로그인하면 새 학습자를 만들지 않고 `account_not_linked`로 거절한다. Linear 4-48 "예외 상황"은 이 경우 다른 학습자로 만든다고 적고 있어 서로 다르다. 카카오를 도입하기 전에 PO가 합칠지 정할 때 함께 정한다. `확인 필요`
+- **계정 자동 연결.** `account.accountLinking.enabled`를 `false`로 두어 껐다. 그런데 `learners.email`이 고유값이라, Google로 가입한 이메일로 다른 공급자에 로그인하면 새 학습자를 만들지 않고 `account_not_linked`로 거절한다. Linear 4-48 "예외 상황"은 이 경우 다른 학습자로 만든다고 적고 있어 서로 다르다. 카카오를 도입하기 전에 PO가 합칠지 정할 때 함께 정한다. `확인 필요`
 - **이메일 필수.** Better Auth는 `user.email`을 필수 고유값으로 둔다. Google은 이메일을 주므로 이번 범위에는 문제가 없다. 비즈 앱 심사 전의 카카오는 이메일을 주지 않아 카카오를 붙일 때 대체 값이 필요하다. `확인 필요`
 
 2026-11-02 커밋 전 코드 리뷰에서 다음을 정했다. 결정한 사람은 개발자다.
@@ -67,6 +68,12 @@ Better Auth를 고른 이유는 세 가지다.
   - 확인: test 브랜치에서 남은 기간 5일인 세션을 만들어, 고치기 전에는 쿠키를 새로 받지 못하고 고친 뒤에는 `Max-Age=604800` 쿠키를 받는 것을 확인했다.
 - **인증 오류는 정리한 메시지만 남긴다.** DB 오류 메시지에 토큰과 IP가 담기므로 라우트 핸들러와 `findLearner`에서 예외를 잡아 정리한다. 로그인 중 오류가 나면 빈 500 화면 대신 `/?error=internal_server_error`로 돌아와 다시 시도 안내를 본다. 처리 방식은 [0005](0005-sentry-error-monitoring.md)에 있다.
 - **로그인과 로그아웃 버튼은 실패를 알린다.** 요청하는 동안 버튼을 비활성화하고, 실패하면 다시 시도 안내를 보여 준다. 로그아웃은 성공했을 때만 `router.refresh()`로 화면을 다시 그린다.
+
+2026-11-03 4-49 구현에서 다음을 정했다. 결정한 사람은 개발자다.
+
+- **테이블 이름과 `id` 타입을 05-1에 맞춘다.** 테이블 이름은 `learner`에서 `learners`로 바꾸고, Better Auth의 `advanced.database.generateId`를 `"uuid"`로 두어 네 테이블의 `id`와 `learner_id`를 모두 `uuid`로 바꿨다. 기존 `text` 값은 `uuid`로 옮길 수 없어서, 학습자 공개 전의 테스트 로그인 데이터를 지우고 테이블을 다시 만들었다. 운영 브랜치와 test 브랜치에 모두 적용했다.
+- **시각은 모두 `timestamptz`로 둔다.** 05-1 공통 규칙에 맞춰 네 테이블의 시각 컬럼을 시간대 있는 타입으로 바꿨다. 시간대 없는 타입은 SQL에서 `at time zone 'Asia/Seoul'`로 한국 날짜를 계산할 때 9시간이 반대로 어긋난다.
+- **`email`은 필수 고유값으로 둔다.** Better Auth가 요구하는 조건이고, 05-1에도 11/3에 같은 내용으로 반영됐다.
 
 ## 다시 검토할 조건
 
