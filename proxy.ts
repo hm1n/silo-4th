@@ -12,7 +12,7 @@ export function proxy(request: NextRequest) {
   if (isMobileRequest(request.headers)) {
     return NextResponse.rewrite(new URL(MOBILE_NOTICE_PATH, request.url));
   }
-  const target = redirectTarget(request.nextUrl.pathname, Boolean(getSessionCookie(request)));
+  const target = redirectTarget(request.nextUrl, Boolean(getSessionCookie(request)));
   const response = target ? NextResponse.redirect(new URL(target, request.url)) : NextResponse.next();
   // 돌려보낼 때도 주소의 `?from=`이 사라지므로 출처 쿠키를 남긴다.
   keepSource(request, response);
@@ -21,9 +21,10 @@ export function proxy(request: NextRequest) {
 
 // 세션 쿠키만 보고 응답 단계에서 빠르게 보낸다. 학습자와 저장 동의는 화면에서 DB로 다시 확인한다.
 // 쿠키가 낡았으면 학습 화면의 `requireLearner()`가 로그아웃시키고 첫 화면으로 돌려보낸다.
-function redirectTarget(pathname: string, hasSession: boolean) {
+// 로그인에 실패해 `?error=`를 달고 온 첫 화면은 보내지 않는다. 낡은 쿠키가 남아 있어도 실패 안내를 보여야 한다.
+function redirectTarget({ pathname, searchParams }: URL, hasSession: boolean) {
   if (pathname === MOBILE_NOTICE_PATH) return HOME_PATH;
-  if (hasSession) return pathname === HOME_PATH ? STUDY_PATH : undefined;
+  if (hasSession) return pathname === HOME_PATH && !searchParams.has("error") ? STUDY_PATH : undefined;
   return isStudyPath(pathname) || pathname === START_PATH ? HOME_PATH : undefined;
 }
 
