@@ -15,6 +15,13 @@
       "when": 1793673372836,
       "tag": "0001_learners_source",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793676699488,
+      "tag": "0002_study_records",
+      "breakpoints": true
     }
   ]
 }
