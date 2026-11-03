@@ -29,4 +29,8 @@ export const env = {
   get AUTH_GOOGLE_SECRET() {
     return required("AUTH_GOOGLE_SECRET");
   },
+  // 배포한 커밋으로 질문을 나눠 본다. Vercel이 배포마다 넣어 주므로 따로 설정하지 않고, 로컬에서는 local로 남긴다.
+  get APP_VERSION() {
+    return process.env.VERCEL_GIT_COMMIT_SHA || "local";
+  },
 };
