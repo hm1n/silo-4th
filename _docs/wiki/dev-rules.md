@@ -30,7 +30,8 @@
 | 서버에서 현재 학습자는 `lib/auth`의 `getCurrentLearner()`로 읽는다. `auth.api.getSession`을 직접 부르면 세션 연장이 쿠키에 반영되지 않는다 | `lib/auth/index.ts` (`disableRefresh`), 루트 레이아웃의 `SessionRefresh`, 코드 리뷰 | [0004](adr/0004-social-login.md) |
 | 학습자에 붙는 값은 `learners` 컬럼으로 두고 Better Auth `user.additionalFields`에 `input: false`로 등록한다. 요청으로 바꿀 수 없고 `getCurrentLearner()` 결과에 함께 나온다. 출처와 테스트 표시는 학습자를 만들 때 한 번만 정한다 | `lib/auth/index.ts`, `lib/db/schema.ts` | [0004](adr/0004-social-login.md) |
 | 단위 테스트는 `*.test.ts`, 통합 테스트는 `*.integration.test.ts`, E2E는 `e2e/*.spec.ts`로 이름을 짓는다. 실행은 `npm test`, `npm run test:integration`, `npm run test:e2e`로 나눈다 | `vitest.config.ts` `projects`, `playwright.config.ts` | [0006](adr/0006-test-strategy.md) |
-| 통합 테스트는 Neon `test` 브랜치에만 연결한다. 주소와 키는 `.env.test.local`에 두고, 통합 테스트 프로젝트만 이 파일을 읽는다 | `vitest.config.ts` `integration` 프로젝트의 `env` | [0006](adr/0006-test-strategy.md) |
+| 통합 테스트와 E2E는 Neon `test` 브랜치에만 연결한다. 주소와 키는 `.env.test.local`에 두고, 통합 테스트 프로젝트와 E2E 설정만 이 파일을 읽는다. 파일이 없으면 E2E는 실행 전에 실패한다 | `vitest.config.ts` `integration` 프로젝트의 `env`, `playwright.config.ts` | [0006](adr/0006-test-strategy.md) |
+| E2E 로그인은 테스트 코드가 테스트 DB에 학습자와 세션을 만들고 서명한 세션 쿠키를 넣어 처리한다. 앱 코드에는 테스트용 로그인 우회 장치를 두지 않는다 | `e2e/fixtures.ts`, 코드 리뷰 | [0006](adr/0006-test-strategy.md) |
 | DB는 `lib/db`의 `getDb()`로만 접근하고, 테이블은 `lib/db/schema.ts`에만 정의한다. 이 모듈을 클라이언트 컴포넌트에서 import하면 빌드가 실패한다 | `lib/db/index.ts` (`server-only`) | [0003](adr/0003-neon-postgres-drizzle.md) |
 
 ## 설계 결정
