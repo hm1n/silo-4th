@@ -4,6 +4,7 @@ import { useState } from "react";
 import { authClient, succeeded } from "@/lib/auth/client";
 import { loginNotice } from "@/lib/auth/login-notice";
 import { enabledProviders, loginButtons, type ProviderId } from "@/lib/auth/providers";
+import { HOME_PATH, STUDY_PATH } from "@/lib/routes";
 
 export function SocialLoginButtons({ error }: { error?: string }) {
   const [pending, setPending] = useState(false);
@@ -14,7 +15,7 @@ export function SocialLoginButtons({ error }: { error?: string }) {
     setPending(true);
     setRequestFailed(false);
     const started = await succeeded(
-      authClient.signIn.social({ provider, callbackURL: "/study", errorCallbackURL: "/" }),
+      authClient.signIn.social({ provider, callbackURL: STUDY_PATH, errorCallbackURL: HOME_PATH }),
     );
     // 성공하면 Google로 이동하므로 버튼을 다시 켜지 않는다.
     if (!started) {
