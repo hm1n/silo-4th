@@ -2,12 +2,12 @@
 
 ## 한 문장 요약
 
-스프린트 1 프로토타입은 Next.js, Vercel, Anthropic 공식 SDK, Tailwind CSS에 Neon Postgres와 Drizzle ORM, Sentry를 더해 만들고, 학습자는 소셜 로그인으로 구분한다. AI 모델, 인증 도구, UI 컴포넌트는 아직 정하지 않았다.
+스프린트 1 프로토타입은 Next.js, Vercel, Anthropic 공식 SDK, Tailwind CSS에 Neon Postgres와 Drizzle ORM, Sentry를 더해 만들고, 학습자는 Better Auth로 붙인 Google 로그인으로 구분한다. 카카오와 네이버 로그인은 추후 도입을 검토한다. AI 모델과 UI 컴포넌트는 아직 정하지 않았다.
 
 ## 근거
 
-- 원천 자료: [`raw/2026-10-30-tech-stack-decisions.md`](../raw/2026-10-30-tech-stack-decisions.md) (개발자의 결정), [`raw/2026-10-30-social-login-decision.md`](../raw/2026-10-30-social-login-decision.md) (PO와 개발자의 결정), Linear [01 브리프](https://linear.app/silo0/document/01-브리프-5fa343785a20), [02 화면 흐름](https://linear.app/silo0/document/02-화면-흐름-6dbdadb44bbb), [03 상세 일정](https://linear.app/silo0/document/03-상세-일정-1f1a08402713), [03-1 진행 가이드](https://linear.app/silo0/document/03-1-진행-가이드-7acec4859ba4)
-- 확인 날짜: 2026-10-30
+- 원천 자료: [`raw/2026-10-30-tech-stack-decisions.md`](../raw/2026-10-30-tech-stack-decisions.md) (개발자의 결정), [`raw/2026-10-30-social-login-decision.md`](../raw/2026-10-30-social-login-decision.md) (PO와 개발자의 결정), Linear [01 브리프](https://linear.app/silo0/document/01-브리프-5fa343785a20), [02 화면 흐름](https://linear.app/silo0/document/02-화면-흐름-6dbdadb44bbb), [03 상세 일정](https://linear.app/silo0/document/03-상세-일정-1f1a08402713), [03-1 진행 가이드](https://linear.app/silo0/document/03-1-진행-가이드-7acec4859ba4), Linear [4-48 소셜 로그인으로 학습자 구분하기](https://linear.app/silo0/issue/4-48)
+- 확인 날짜: 2026-10-30, 인증 도구와 공급자는 2026-11-02
 - 결정한 사람: 개발자 (01 브리프에서 "어떻게 동작하게 만드는지"의 DRI)
 - 관련 문서: [개발 규칙](dev-rules.md)
 
@@ -30,14 +30,15 @@
 | DB | Neon Postgres | 기록 여섯 가지를 서버에 남겨야 하고, PO가 SQL로 지표를 뽑을 수 있다. [ADR 0003](adr/0003-neon-postgres-drizzle.md) |
 | DB 접근 | Drizzle ORM | 스키마에서 타입이 나와 AI가 작성한 DB 코드의 오류를 컴파일 단계에서 잡을 수 있다. [ADR 0003](adr/0003-neon-postgres-drizzle.md) |
 | 오류 알림 | Sentry | 03 상세 일정에 따라 11/6에 설정하고, 서버와 브라우저 오류를 모두 잡는다. 무료 요금제라 알림은 Apps Script가 Sentry API를 조회해 Slack으로 PO에게 보낸다. [ADR 0005](adr/0005-sentry-error-monitoring.md) |
+| 인증 | Better Auth와 Drizzle 어댑터 | 설정에서 타입이 추론되고, Next.js 16을 공식 지원한다. Auth.js는 Better Auth로 넘어가 보안 수정만 하고, Neon Auth는 카카오와 네이버로 넓히기 어렵다. [ADR 0004](adr/0004-social-login.md) |
 | 스타일 | Tailwind CSS | 이미 설치되어 있고, 새 문서와 부딪치는 내용이 없다 |
 
 ## 동작 방식에 대한 결정
 
 | 영역 | 결정 |
 | --- | --- |
-| 학습자 구분 | 소셜 로그인으로 학습자를 구분한다. 공급자와 인증 도구는 정하지 않았다. [ADR 0004](adr/0004-social-login.md) |
-| 출처 기록 | 첫 방문 때 `from` 값을 학습자마다 고정한다. 팀은 `from=test`로 들어오고, 값이 없으면 `unknown`으로 남긴다 |
+| 학습자 구분 | 소셜 로그인으로 학습자를 구분하고, 이메일이 아니라 공급자와 공급자 계정 ID로 학습자를 찾는다. Google을 먼저 도입하고, 카카오와 네이버는 추후 도입을 검토한다. 서로 다른 공급자 계정은 한 학습자로 합치지 않는다. [ADR 0004](adr/0004-social-login.md) |
+| 출처 기록 | 주소의 `from` 값 중 형식에 맞는 첫 값을 `proxy.ts`가 `from` 쿠키에 30일 동안 담아 Google 로그인을 다녀와도 남긴다. 쿠키가 있으면 덮어쓰지 않는다. 학습자를 만들 때 이 값을 `learners.source`에 고정하고, 값이 없거나 형식에 맞지 않으면 `direct`로 남긴다. 형식은 앞뒤 공백을 지우고 소문자로 바꾼 뒤 영문 소문자, 숫자, `-`, `_`로 된 32자 이하이고, 목록 밖의 값도 그대로 저장한다. 팀은 `from=test`로 들어오고 `is_test`가 `true`가 된다. 정한 사람은 개발자이고, 값 목록을 PO가 정하면 다시 본다. 근거는 [Linear 4-49](https://linear.app/silo0/issue/4-49)다 |
 | 날짜 계산 | 시각은 UTC로 저장하고, 학습일은 "한국 시간에서 4시간을 뺀 날짜"로 한 함수에서만 계산한다. 테스트 학습자에게만 날짜 오프셋을 둔다 |
 
 ## 제안
@@ -55,13 +56,14 @@
 ## 보류한 것
 
 - **AI 모델:** 11/2까지 같은 질문으로 모델을 비교한 뒤 정한다. 기능 동결(11/4) 뒤에는 바꾸지 않는다. 지금 `.env.example`의 기본값은 `claude-opus-5-5`다.
-- **인증 도구:** 소셜 로그인에 쓸 도구는 Next.js 16 호환, 공급자 지원, Neon과 Drizzle 연결, 타입 안전성을 기준으로 후보를 비교한 뒤 정한다. ([ADR 0004](adr/0004-social-login.md))
+- **카카오와 네이버 로그인:** 일정에 여유가 생기면 별도 이슈로 도입을 검토한다. 카카오는 비즈 앱 심사 전에는 이메일을 주지 않아, Better Auth의 필수 이메일 필드에 넣을 대체 값을 정해야 한다. 같은 사람의 Google과 카카오 계정을 합칠지는 카카오를 도입하기 전에 PO가 정한다. ([ADR 0004](adr/0004-social-login.md))
 - **UI 컴포넌트:** 학습 화면은 개발자가 기본 컴포넌트로 만든다(02 화면 목록). shadcn/ui를 도입할지는 디자이너와 상의한 뒤 정한다.
 
 ## 확인 필요
 
-- 소셜 로그인 공급자는 PO와 다시 정한다. 공급자마다 OAuth 앱 등록 시간을 만드는 기간(11/2~11/4)에 넣어야 한다.
-- 로그인 이동 중에 `?from=` 출처 값을 유지하는 방법과 `from=test` 테스트 학습자 처리는 인증 도구를 정할 때 함께 정한다.
+- Google OAuth 앱이 테스트 상태면 등록한 테스트 사용자만 로그인할 수 있다. 11/5 학습자 공개 전에 운영 상태로 바꿔야 한다.
+- 같은 이메일로 다른 공급자에 로그인하면 지금은 `account_not_linked`로 거절한다. Linear 4-48은 다른 학습자로 만든다고 적고 있어 카카오 도입 전에 정해야 한다. ([ADR 0004](adr/0004-social-login.md) "결과")
+- 실제로 쓸 `from` 값 목록은 PO가 정한다. 목록이 정해지면 목록 밖의 값을 `direct`로 바꿀지 다시 정한다. 근거는 Linear 4-49 "열린 질문"이다.
 - 01 브리프에는 PO가 내 이해 기록과 지표 추출을 개발한다고 되어 있지만, 03 상세 일정의 최신본에서는 이 내용이 빠졌다. PO가 코드를 다루는지에 따라 Drizzle 스키마와 데이터 형식을 PO에게 어떻게 넘길지가 달라진다.
 
 ## 다시 물어볼 질문

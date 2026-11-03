@@ -17,4 +17,16 @@ export const env = {
   get DATABASE_URL() {
     return required("DATABASE_URL");
   },
+  get AUTH_SECRET() {
+    return required("AUTH_SECRET");
+  },
+  get AUTH_URL() {
+    return required("AUTH_URL");
+  },
+  get AUTH_GOOGLE_ID() {
+    return required("AUTH_GOOGLE_ID");
+  },
+  get AUTH_GOOGLE_SECRET() {
+    return required("AUTH_GOOGLE_SECRET");
+  },
 };

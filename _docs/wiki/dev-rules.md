@@ -26,6 +26,11 @@
 | `_docs/raw/`에 이미 있는 파일은 고치지 않는다. 새 원본 저장은 허용한다 | `.claude/hooks/protect-raw.mjs` (PreToolUse 훅) | [0002](adr/0002-raw-protection-in-repo.md) |
 | Sentry는 `lib/sentry.ts`의 `sentryOptions`로만 초기화한다. 세션 리플레이를 넣지 않고, `dataCollection`으로 사용자 정보, HTTP 본문, LLM 입출력, 로컬 변수 수집을 끈다 | `lib/sentry.ts`, `instrumentation.ts`, `instrumentation-client.ts` | [0005](adr/0005-sentry-error-monitoring.md) |
 | 오류 정보(breadcrumb, extra, context)에 질문 원문과 이메일을 넣지 않는다 | 코드 리뷰 (기계 검사 없음) | [0005](adr/0005-sentry-error-monitoring.md) |
+| DB 오류는 원본 그대로 서버 로그나 Sentry로 보내지 않는다. 인증 오류는 `lib/auth/sentry-logger.ts`의 `safeMessage`, `reportAuthError`로 정리한 메시지만 남긴다 | 인증은 `app/api/auth/[...all]/route.ts`, `lib/auth/index.ts`의 `findLearner`. 그 밖의 DB 오류는 코드 리뷰 (기계 검사 없음) | [0005](adr/0005-sentry-error-monitoring.md) |
+| 서버에서 현재 학습자는 `lib/auth`의 `getCurrentLearner()`로 읽는다. `auth.api.getSession`을 직접 부르면 세션 연장이 쿠키에 반영되지 않는다 | `lib/auth/index.ts` (`disableRefresh`), 루트 레이아웃의 `SessionRefresh`, 코드 리뷰 | [0004](adr/0004-social-login.md) |
+| 학습자에 붙는 값은 `learners` 컬럼으로 두고 Better Auth `user.additionalFields`에 `input: false`로 등록한다. 요청으로 바꿀 수 없고 `getCurrentLearner()` 결과에 함께 나온다. 출처와 테스트 표시는 학습자를 만들 때 한 번만 정한다 | `lib/auth/index.ts`, `lib/db/schema.ts` | [0004](adr/0004-social-login.md) |
+| 단위 테스트는 `*.test.ts`, 통합 테스트는 `*.integration.test.ts`, E2E는 `e2e/*.spec.ts`로 이름을 짓는다. 실행은 `npm test`, `npm run test:integration`, `npm run test:e2e`로 나눈다 | `vitest.config.ts` `projects`, `playwright.config.ts` | [0006](adr/0006-test-strategy.md) |
+| 통합 테스트는 Neon `test` 브랜치에만 연결한다. 주소와 키는 `.env.test.local`에 두고, 통합 테스트 프로젝트만 이 파일을 읽는다 | `vitest.config.ts` `integration` 프로젝트의 `env` | [0006](adr/0006-test-strategy.md) |
 | DB는 `lib/db`의 `getDb()`로만 접근하고, 테이블은 `lib/db/schema.ts`에만 정의한다. 이 모듈을 클라이언트 컴포넌트에서 import하면 빌드가 실패한다 | `lib/db/index.ts` (`server-only`) | [0003](adr/0003-neon-postgres-drizzle.md) |
 
 ## 설계 결정
@@ -35,8 +40,9 @@
 | [0001](adr/0001-ai-coding-rule-enforcement.md) | AI 코딩 규칙은 md보다 검사 도구로 강제한다 | 확정 |
 | [0002](adr/0002-raw-protection-in-repo.md) | raw 원본 수정 차단은 저장소의 Claude Code 훅으로 한다 | 확정 |
 | [0003](adr/0003-neon-postgres-drizzle.md) | 기록 저장은 Neon Postgres에 하고, Drizzle ORM으로 접근한다 | 확정 |
-| [0004](adr/0004-social-login.md) | 소셜 로그인으로 학습자를 구분한다 (인증 도구와 공급자는 정하지 않았다) | 확정 |
+| [0004](adr/0004-social-login.md) | 소셜 로그인으로 학습자를 구분하고, 공급자는 Google, 인증 도구는 Better Auth를 쓴다 | 확정 |
 | [0005](adr/0005-sentry-error-monitoring.md) | 오류 모니터링은 Sentry 무료 요금제로 하고, 알림은 Apps Script로 Slack에 보낸다 | 확정 |
+| [0006](adr/0006-test-strategy.md) | 테스트는 노션 DB에서 확정한 케이스만 옮긴다. 단위는 Vitest, E2E는 Playwright로 하고, 통합 테스트는 DB를 변경하는 서버 코드에만 둔다 | 확정 |
 
 ## 아직 도입하지 않은 규칙
 
@@ -49,7 +55,8 @@
 | `lib/db` 밖 서버 코드의 `server-only` 적용 위치 | 서버 코드의 디렉터리 구조 |
 | Edge runtime 금지, `cacheComponents` 관련 규칙 | Next.js 설정을 유지할지 여부 |
 | `.claude/rules/` 경로별 규칙과 기준 예시 파일 | 디렉터리 구조 |
-| 테스트 도구, CI, pre-commit | 의존성과 배포 방식 |
+| 확정 테스트 수정 차단 훅, 케이스 ID 검사, Stop 훅의 테스트 범위 | 0006의 `제안` 항목을 개발자가 정하는 일 |
+| CI, pre-commit | 의존성과 배포 방식 |
 
 LLM 출력 스키마 규칙은 이번 스프린트에서 AI가 개념을 고르거나 문제를 만들지 않아 필요하지 않다. (근거: `raw/2026-10-30-tech-stack-decisions.md` "확정한 것")
 
