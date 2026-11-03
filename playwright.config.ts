@@ -17,6 +17,9 @@ Object.assign(process.env, testEnv);
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
+  // 개발 서버는 화면을 처음 열 때 컴파일한다. `.next`가 비어 있으면 여러 화면을 동시에 컴파일하느라 기본 시간을 넘긴다.
+  timeout: 60_000,
+  expect: { timeout: 15_000 },
   use: {
     baseURL,
     trace: "on-first-retry",

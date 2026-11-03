@@ -13,15 +13,15 @@ function errorCode(value: unknown) {
   return undefined;
 }
 
-export function safeMessage(value: unknown) {
+export function safeMessage(value: unknown, label = "better-auth") {
   const message = value instanceof Error ? value.message : String(value);
   const code = errorCode(value);
   const safe = message.replace(QUERY_PARAMS, "").replace(EMAIL, "[email]");
-  return `[better-auth] ${safe}${code ? ` [code ${code}]` : ""}`;
+  return `[${label}] ${safe}${code ? ` [code ${code}]` : ""}`;
 }
 
-export function reportAuthError(error: unknown) {
-  const safe = safeMessage(error);
+export function reportAuthError(error: unknown, label?: string) {
+  const safe = safeMessage(error, label);
   console.error(safe);
   captureMessage(safe, "error");
 }
