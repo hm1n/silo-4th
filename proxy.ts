@@ -1,26 +1,30 @@
 import { getSessionCookie } from "better-auth/cookies";
 import { type NextRequest, NextResponse } from "next/server";
 import { isMobileRequest } from "@/lib/device";
-import { HOME_PATH, isStudyPath, MOBILE_NOTICE_PATH } from "@/lib/routes";
+import { HOME_PATH, isStudyPath, MOBILE_NOTICE_PATH, START_PATH, STUDY_PATH } from "@/lib/routes";
 import { DIRECT_SOURCE, normalizeSource, SOURCE_COOKIE } from "@/lib/source";
 
 const THIRTY_DAYS = 60 * 60 * 24 * 30;
 
-// 모바일 판별, 출처 쿠키, 학습 화면 접근 확인 순서로 본다.
+// 모바일 판별, 화면 접근 확인, 출처 쿠키 순서로 본다.
 export function proxy(request: NextRequest) {
   // 모바일 화면은 만들지 않는다. 주소는 그대로 두고 안내 화면을 보여 줘야 `?from=`까지 복사할 수 있다.
   if (isMobileRequest(request.headers)) {
     return NextResponse.rewrite(new URL(MOBILE_NOTICE_PATH, request.url));
   }
-  // PC에서 안내 화면 주소로 바로 들어오거나 세션 쿠키 없이 학습 화면에 들어오면 첫 화면으로 보낸다.
-  // 학습 화면은 쿠키만 보고 빠르게 돌려보내고, 학습자와 저장 동의는 `requireLearner()`가 DB로 다시 확인한다.
+  const target = redirectTarget(request.nextUrl.pathname, Boolean(getSessionCookie(request)));
+  const response = target ? NextResponse.redirect(new URL(target, request.url)) : NextResponse.next();
   // 돌려보낼 때도 주소의 `?from=`이 사라지므로 출처 쿠키를 남긴다.
-  const sendHome =
-    request.nextUrl.pathname === MOBILE_NOTICE_PATH ||
-    (isStudyPath(request.nextUrl.pathname) && !getSessionCookie(request));
-  const response = sendHome ? NextResponse.redirect(new URL(HOME_PATH, request.url)) : NextResponse.next();
   keepSource(request, response);
   return response;
+}
+
+// 세션 쿠키만 보고 응답 단계에서 빠르게 보낸다. 학습자와 저장 동의는 화면에서 DB로 다시 확인한다.
+// 쿠키가 낡았으면 학습 화면의 `requireLearner()`가 로그아웃시키고 첫 화면으로 돌려보낸다.
+function redirectTarget(pathname: string, hasSession: boolean) {
+  if (pathname === MOBILE_NOTICE_PATH) return HOME_PATH;
+  if (hasSession) return pathname === HOME_PATH ? STUDY_PATH : undefined;
+  return isStudyPath(pathname) || pathname === START_PATH ? HOME_PATH : undefined;
 }
 
 // Google 로그인을 다녀오면 주소의 `?from=`이 사라진다. 학습자를 만들 때 읽도록 처음 값만 쿠키에 남긴다.
