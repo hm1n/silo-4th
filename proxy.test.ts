@@ -18,3 +18,10 @@ it("TC-16 주소의 출처는 처음 값만 쿠키에 남겨요", () => {
   const second = visit("/?from=school-b", "from=school-a");
   expect(second.cookies.get("from")).toBeUndefined();
 });
+
+it("TC-44 로그인에 실패해 첫 화면으로 돌아오면 남은 세션 쿠키가 있어도 첫 화면에 머물러요", () => {
+  const sessionCookie = "better-auth.session_token=stale.signature";
+
+  expect(visit("/?error=access_denied", sessionCookie).headers.get("location")).toBeNull();
+  expect(new URL(visit("/", sessionCookie).headers.get("location") ?? "").pathname).toBe("/study");
+});
