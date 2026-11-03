@@ -10,11 +10,11 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 | --- | --- | --- |
 | 단위 | `npm test` | 없음 |
 | 통합 | `npm run test:integration` | `.env.test.local` |
-| E2E | `npm run test:e2e` | `.env.local` |
+| E2E | `npm run test:e2e` | `.env.test.local` |
 
-### 통합 테스트
+### 통합 테스트와 E2E
 
-통합 테스트는 운영 DB가 아닌 Neon `test` 브랜치에 실제로 쓰고 지운다. 저장소 루트에 `.env.test.local`을 만들고 아래 키를 넣는다. 이 파일은 `.gitignore`에 걸려 올라가지 않는다.
+통합 테스트와 E2E는 운영 DB가 아닌 Neon `test` 브랜치에 실제로 쓰고 지운다. E2E는 이 파일의 값으로 3100번 포트에 개발 서버를 따로 띄우고, 테스트 학습자와 로그인 세션을 DB에 직접 만들어 쓴다. Next.js는 한 프로젝트에 개발 서버를 하나만 띄우므로 `npm run dev`를 끄고 실행한다. 저장소 루트에 `.env.test.local`을 만들고 아래 키를 넣는다. 이 파일은 `.gitignore`에 걸려 올라가지 않는다.
 
 ```bash
 # Neon 콘솔 > Branches > test > Connect에서 복사한다. 운영 브랜치 주소를 넣지 않는다.
