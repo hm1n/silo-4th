@@ -1,79 +1,12 @@
-import { randomUUID } from "node:crypto";
 import { captureMessage } from "@sentry/nextjs";
-import { eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { findLearner, getAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { account, learner, session } from "@/lib/db/schema";
-import { env } from "@/lib/env";
+import { deleteCreatedLearners, loginWithGoogle, newProfile } from "./google-login.testing";
 
 vi.mock("@sentry/nextjs", () => ({ captureMessage: vi.fn() }));
-
-type GoogleProfile = { sub: string; email: string; name: string };
-
-const realFetch = globalThis.fetch;
-const createdEmails: string[] = [];
-
-function newProfile(name = "테스트 학습자"): GoogleProfile {
-  const email = `${randomUUID()}@tc.test`;
-  createdEmails.push(email);
-  return { sub: randomUUID(), email, name };
-}
-
-// 콜백은 id_token을 서명 검증 없이 해석하므로 서명 자리는 아무 값이나 둔다.
-function idToken(profile: GoogleProfile) {
-  const part = (value: object) => Buffer.from(JSON.stringify(value)).toString("base64url");
-  const claims = {
-    iss: "https://accounts.google.com",
-    aud: env.AUTH_GOOGLE_ID,
-    email_verified: true,
-    ...profile,
-  };
-  return `${part({ alg: "RS256", kid: "test" })}.${part(claims)}.signature`;
-}
-
-function stubGoogleToken(profile: GoogleProfile) {
-  vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
-    const url = input instanceof Request ? input.url : String(input);
-    if (url !== "https://oauth2.googleapis.com/token") return realFetch(input, init);
-    return Promise.resolve(
-      Response.json({
-        access_token: "access-token",
-        token_type: "Bearer",
-        expires_in: 3600,
-        id_token: idToken(profile),
-      }),
-    );
-  });
-}
-
-function cookiesFrom(response: Response) {
-  return response.headers
-    .getSetCookie()
-    .map((cookie) => cookie.split(";")[0])
-    .filter((pair) => pair && !pair.endsWith("="))
-    .join("; ");
-}
-
-async function loginWithGoogle(profile: GoogleProfile) {
-  stubGoogleToken(profile);
-  const { handler } = getAuth();
-  const start = await handler(
-    new Request(`${env.AUTH_URL}/api/auth/sign-in/social`, {
-      method: "POST",
-      headers: { "content-type": "application/json", origin: env.AUTH_URL },
-      body: JSON.stringify({ provider: "google", callbackURL: "/study" }),
-    }),
-  );
-  const { url } = (await start.json()) as { url: string };
-  const state = new URL(url).searchParams.get("state") ?? "";
-  const callback = await handler(
-    new Request(`${env.AUTH_URL}/api/auth/callback/google?code=test-code&state=${state}`, {
-      headers: { cookie: cookiesFrom(start) },
-    }),
-  );
-  return { callback, headers: new Headers({ cookie: cookiesFrom(callback) }) };
-}
 
 function learnersWithEmail(email: string) {
   return getDb().select().from(learner).where(eq(learner.email, email));
@@ -82,9 +15,7 @@ function learnersWithEmail(email: string) {
 afterEach(async () => {
   vi.restoreAllMocks();
   vi.clearAllMocks();
-  if (createdEmails.length > 0) {
-    await getDb().delete(learner).where(inArray(learner.email, createdEmails.splice(0)));
-  }
+  await deleteCreatedLearners();
 });
 
 describe("현재 학습자", () => {
