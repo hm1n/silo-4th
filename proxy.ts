@@ -12,16 +12,13 @@ export function proxy(request: NextRequest) {
   if (isMobileRequest(request.headers)) {
     return NextResponse.rewrite(new URL(MOBILE_NOTICE_PATH, request.url));
   }
-  // PC에서 안내 화면 주소로 바로 들어오면 첫 화면을 보여 준다.
-  if (request.nextUrl.pathname === MOBILE_NOTICE_PATH) {
-    return NextResponse.redirect(new URL(HOME_PATH, request.url));
-  }
-
-  // 쿠키만 보고 빠르게 돌려보낸다. 학습자와 저장 동의는 학습 화면의 `requireLearner()`가 DB로 다시 확인한다.
-  const response =
-    isStudyPath(request.nextUrl.pathname) && !getSessionCookie(request)
-      ? NextResponse.redirect(new URL(HOME_PATH, request.url))
-      : NextResponse.next();
+  // PC에서 안내 화면 주소로 바로 들어오거나 세션 쿠키 없이 학습 화면에 들어오면 첫 화면으로 보낸다.
+  // 학습 화면은 쿠키만 보고 빠르게 돌려보내고, 학습자와 저장 동의는 `requireLearner()`가 DB로 다시 확인한다.
+  // 돌려보낼 때도 주소의 `?from=`이 사라지므로 출처 쿠키를 남긴다.
+  const sendHome =
+    request.nextUrl.pathname === MOBILE_NOTICE_PATH ||
+    (isStudyPath(request.nextUrl.pathname) && !getSessionCookie(request));
+  const response = sendHome ? NextResponse.redirect(new URL(HOME_PATH, request.url)) : NextResponse.next();
   keepSource(request, response);
   return response;
 }
