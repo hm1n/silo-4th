@@ -425,4 +425,46 @@ describe("질문 보내기", () => {
       expect.objectContaining({ role: "assistant", content: "기다린 답" }),
     ]);
   });
+
+  it("TC-50 실패한 질문을 동시에 다시 보내면 한 요청만 답을 받고 나머지는 처리 중이라고 알려요", async () => {
+    const { headers, learnerId } = await loginConsented();
+    const { id: unitId } = await firstUnit();
+    const questionId = newQuestionId();
+    const askedAt = new Date();
+    await getDb().insert(question).values({
+      id: questionId,
+      learnerId,
+      unitId,
+      askedAt,
+      studyDay: studyDay(askedAt),
+      appVersion: APP_VERSION,
+      status: "error",
+    });
+    await getDb().insert(message).values({ questionId, seq: 1, role: "user", content: "실패했던 질문" });
+    // 먼저 가져간 요청이 답을 끝내기 전에 두 요청이 모두 응답을 받아야 나머지 요청이 처리 중인 줄을 본다.
+    const bothResponded = Promise.withResolvers<void>();
+    ai.stream.mockImplementation(() =>
+      fakeStream({ chunks: ["동시에 받은 답"], holdBeforeFirst: bothResponded.promise }),
+    );
+
+    const responses = await Promise.all([
+      ask({ questionId, unitId, content: "실패했던 질문" }, { headers }),
+      ask({ questionId, unitId, content: "실패했던 질문" }, { headers }),
+    ]).finally(bothResponded.resolve);
+
+    expect(responses.map(({ status }) => status).sort()).toEqual([200, 409]);
+    const answered = responses.find(({ status }) => status === 200);
+    if (!answered) throw new Error("답을 받은 요청이 없다.");
+    const received = await events(answered);
+    expect(received.at(-1)?.event).toBe("done");
+    expect(answerText(received)).toBe("동시에 받은 답");
+    const saved = await questionRows(questionId);
+    expect(saved).toHaveLength(1);
+    expect(saved[0]?.status).toBe("ok");
+    expect(await messageRows(questionId)).toEqual([
+      expect.objectContaining({ role: "user", content: "실패했던 질문" }),
+      expect.objectContaining({ role: "assistant", content: "동시에 받은 답" }),
+    ]);
+    expect(ai.stream).toHaveBeenCalledTimes(1);
+  });
 });
