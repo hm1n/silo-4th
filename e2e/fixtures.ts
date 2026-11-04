@@ -5,6 +5,7 @@ import { drizzle } from "drizzle-orm/neon-http";
 import { learner, session, unit } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import { TEST_SOURCE } from "@/lib/source";
+import { unitSections } from "@/lib/unit-sections";
 
 const db = drizzle({ connection: env.DATABASE_URL });
 
@@ -57,4 +58,9 @@ export const test = base.extend<{ consented: boolean }>({
 
 export function firstUnits(count: number) {
   return db.select({ title: unit.title }).from(unit).orderBy(asc(unit.id)).limit(count);
+}
+
+export async function unitsWithSections() {
+  const units = await db.select().from(unit).orderBy(asc(unit.id));
+  return units.map(({ id, title, content }) => ({ id, title, sections: unitSections(content) }));
 }
