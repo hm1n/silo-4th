@@ -11,6 +11,7 @@
 
 - 환경 변수는 `lib/env.ts`의 `env`로만 읽는다.
 - 타입을 `any`로 덮지 않는다.
+- AI 모델 ID를 코드에 쓰지 않고 `env.ANTHROPIC_MODEL`로만 읽는다. 질문 답변은 Claude Sonnet 5.5를 effort `low`로 쓰며, 근거는 `_docs/wiki/adr/0007-ai-model.md`에 있다.
 
 ## 테스트
 
