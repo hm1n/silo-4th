@@ -107,7 +107,8 @@ export async function expireSessionCookies(writer: CookieWriter) {
   }
 }
 
-// 학습 화면의 레이아웃, 페이지, 서버 액션, API는 이 함수로 학습자를 꺼낸다. 학습자가 없거나 저장에 동의하지 않았으면 돌려보낸다.
+// 학습 화면의 레이아웃, 페이지, 서버 액션은 이 함수로 학습자를 꺼낸다. 학습자가 없거나 저장에 동의하지 않았으면 돌려보낸다.
+// 화면 이동 대신 상태 코드로 답해야 하는 API는 findLearner로 직접 확인한다.
 // 한 요청 안에서 레이아웃과 페이지가 함께 불러도 DB는 한 번만 조회한다.
 export const requireLearner = cache(async () => {
   const requestHeaders = await headers();

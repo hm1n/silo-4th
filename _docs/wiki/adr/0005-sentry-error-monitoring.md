@@ -38,9 +38,12 @@ Sentry 무료 요금제(Developer)와 `@sentry/nextjs`로 서버와 브라우저
 - 같은 날 다른 경로도 점검했다. Drizzle의 추적 구간은 OpenTelemetry를 연결하는 코드가 없어 만들어지지 않는다. Next.js 추적은 요청 밖으로 나간 예외만 기록하는데, 라우트 핸들러와 `findLearner`가 정리한 메시지만 내보낸다. OAuth 콜백 URL의 `code`, `state`는 Sentry 서버 요청 구간에 `[Filtered]`로 저장되는 것을 확인했다. 최근 7일 오류 이벤트에 쿼리 값이 담긴 것은 없었다.
 - test 브랜치에서 세션 저장과 세션 조회를 일부러 실패시켜, 고치기 전에는 `params:`와 User-Agent가 로그에 남고 고친 뒤에는 남지 않는 것을 확인했다.
 
-다음은 Claude가 제안했고 개발자가 아직 정하지 않았다. `제안`
+2026-11-04 4-59 질문 저장에서 개발자가 정한 처리 방식: 인증 밖의 DB 오류도 인증과 같이 경계에서 정리한다. 앱 전체에 `beforeSend`, `beforeBreadcrumb`으로 `params:` 뒤를 지우는 방식은 Vercel 로그에 찍히는 원본을 막지 못해 택하지 않았다. (근거: `app/api/questions/route.ts`, `lib/questions.ts`)
 
-- 인증 밖의 DB 오류, 예를 들어 질문과 기록 저장 오류는 아직 이 처리를 거치지 않는다. 그 기능을 만들 때 같은 방식으로 경계에서 정리하거나, `lib/sentry.ts`의 `beforeSend`와 `beforeBreadcrumb`에서 `params:` 뒤를 지우는 처리를 앱 전체에 더한다. 후자는 Vercel 로그에 찍히는 원본은 막지 못한다.
+- 질문 경로의 DB 오류는 질문 원문과 AI 답을 쿼리 값으로 담는다. `app/api/questions/route.ts`가 이 오류를 잡아 `safeMessage(error, "questions")`로 정리한 새 `Error`만 Sentry로 보낸다. 원본은 `cause`로도 달지 않는다.
+- `safeMessage`는 출처 이름을 인자로 받아 `[questions]`처럼 앞에 붙인다. 기본값은 `[better-auth]`다.
+- Anthropic SDK 오류는 보낸 질문을 담지 않아 그대로 보낸다. AI 시간 제한에 걸리면 SDK의 중단 오류 대신 어느 제한에 걸렸는지만 담은 오류를 보낸다.
+- 앞으로 DB를 쓰는 경로를 더할 때도 같은 방식으로 경계에서 정리한다.
 
 ## 검토한 대안
 
@@ -60,7 +63,7 @@ PO에게 알림을 전달하는 방식
 | --- | --- | --- | --- |
 | 개발자 메일함에서 Sentry 메일을 PO에게 자동 전달 | 코드가 필요 없다 | 메일 내용을 고칠 수 없어 오류 메시지 원문이 그대로 간다 | 이슈 4-43의 완료 기준을 지킬 수 없다 |
 | Gmail의 Sentry 메일을 Slack 채널 메일 주소로 전달 | 코드가 필요 없다 | 위와 같다 | 위와 같다 |
-| Vercel Cron으로 앱 안에서 Sentry API 조회 | 앱 저장소 안에서 관리한다 | Hobby의 Cron은 하루 1회다 (확인 필요) | 알림이 최대 하루 늦는다 |
+| Vercel Cron으로 앱 안에서 Sentry API 조회 | 앱 저장소 안에서 관리한다 | Hobby의 Cron은 하루 1회만 돌고, 실행 시각이 정한 시각부터 59분 사이에서 흔들린다. 2026-11-04에 [Vercel 문서](https://vercel.com/docs/cron-jobs/usage-and-pricing)로 확인했다 | 알림이 최대 하루 늦는다 |
 | GitHub Actions 예약 실행으로 조회 | 저장소 안에서 관리한다 | 5분 주기면 비공개 저장소의 무료 실행 시간을 넘는다 (추정) | 비용이 든다 |
 | Apps Script가 Gmail의 Sentry 메일을 읽어 Slack으로 전송 | Sentry API 없이 된다 | 메일 형식이 바뀌면 깨진다 | 예비안으로 둔다 |
 | Slack 봇 토큰(`chat.postMessage`) | 메시지 수정, 스레드 답글을 쓸 수 있다 | 봇 권한과 토큰을 관리해야 한다 | 한 채널에 보내기만 하므로 Webhook URL로 충분하다 |
