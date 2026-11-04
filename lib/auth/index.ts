@@ -1,10 +1,14 @@
 import "server-only";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { headers } from "next/headers";
+import { getSessionCookie } from "better-auth/cookies";
+import { cookies, headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { cache } from "react";
 import { getDb } from "@/lib/db";
 import * as schema from "@/lib/db/schema";
 import { env } from "@/lib/env";
+import { CLEAR_SESSION_PATH, HOME_PATH, START_PATH } from "@/lib/routes";
 import { DIRECT_SOURCE, normalizeSource, SOURCE_COOKIE, TEST_SOURCE } from "@/lib/source";
 import { enabledProviders, type ProviderId } from "./providers";
 import { safeMessage, sentryLogger } from "./sentry-logger";
@@ -76,4 +80,57 @@ export async function findLearner(requestHeaders: Headers) {
 
 export async function getCurrentLearner() {
   return findLearner(await headers());
+}
+
+type CookieWriter = {
+  set(
+    name: string,
+    value: string,
+    options: { path?: string; domain?: string; secure?: boolean; httpOnly?: boolean; sameSite?: "lax" | "strict" | "none"; maxAge: number },
+  ): unknown;
+};
+
+// 세션 쿠키를 만료시켜 로그아웃한다. Better Auth는 서명이 틀린 쿠키를 지우지 않으므로 세션 조회 결과와 관계없이 직접 지운다.
+// `__Secure-` 쿠키는 처음과 같은 속성으로 덮어써야 브라우저가 받아들인다.
+export async function expireSessionCookies(writer: CookieWriter) {
+  const { authCookies } = await getAuth().$context;
+  for (const { name, attributes } of [authCookies.sessionToken, authCookies.sessionData, authCookies.dontRememberToken]) {
+    writer.set(name, "", {
+      path: attributes.path,
+      domain: attributes.domain,
+      secure: attributes.secure,
+      httpOnly: attributes.httpOnly,
+      // Better Auth 타입은 대문자 값도 받지만 Next.js는 소문자만 받는다.
+      sameSite: attributes.sameSite?.toLowerCase() as Lowercase<NonNullable<typeof attributes.sameSite>> | undefined,
+      maxAge: 0,
+    });
+  }
+}
+
+// 학습 화면의 레이아웃, 페이지, 서버 액션은 이 함수로 학습자를 꺼낸다. 학습자가 없거나 저장에 동의하지 않았으면 돌려보낸다.
+// 화면 이동 대신 상태 코드로 답해야 하는 API는 findLearner로 직접 확인한다.
+// 한 요청 안에서 레이아웃과 페이지가 함께 불러도 DB는 한 번만 조회한다.
+export const requireLearner = cache(async () => {
+  const requestHeaders = await headers();
+  const learner = await findLearner(requestHeaders);
+  if (!learner) {
+    if (getSessionCookie(requestHeaders)) await logOutStaleSession();
+    redirect(HOME_PATH);
+  }
+  // 시험 날짜는 저장 동의와 같은 폼에서 함께 저장하므로 따로 확인하지 않는다.
+  if (!learner.consentedAt) redirect(START_PATH);
+  return learner;
+});
+
+// 쿠키는 있지만 학습자가 없으면 로그아웃한다. 서버 액션과 라우트 핸들러는 그 자리에서 쿠키를 지운다.
+// 서버 컴포넌트는 쿠키를 쓰면 예외가 나므로, 쿠키를 지울 수 있는 라우트 핸들러로 보낸다.
+async function logOutStaleSession() {
+  const cookieStore = await cookies();
+  // 설정 오류가 아래 catch에 묻히지 않게 먼저 불러 둔다.
+  await getAuth().$context;
+  try {
+    await expireSessionCookies(cookieStore);
+  } catch {
+    redirect(CLEAR_SESSION_PATH);
+  }
 }

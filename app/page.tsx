@@ -1,32 +1,19 @@
 import { Suspense } from "react";
-import { SignOutButton } from "@/app/_components/sign-out-button";
 import { SocialLoginButtons } from "@/app/_components/social-login-buttons";
-import { getCurrentLearner } from "@/lib/auth";
 
-type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
-
-// 첫 화면은 4-51에서 만든다. 그 전까지 로그인을 직접 확인할 수 있게 버튼과 현재 학습자를 보여 준다.
-export default function Home({ searchParams }: { searchParams: SearchParams }) {
+// 로그인한 학습자는 `proxy.ts`가 학습 화면으로 보내므로, 이 화면은 로그인하지 않은 사람만 본다.
+export default function Home({ searchParams }: PageProps<"/">) {
   return (
-    <main>
+    <main className="mx-auto flex w-full max-w-md flex-col gap-6 p-8">
+      <p>오늘 AI에게 물어본 내용, 내일 진짜 혼자 풀 수 있는지 확인해 드려요</p>
       <Suspense>
-        <LoginStatus searchParams={searchParams} />
+        <Login searchParams={searchParams} />
       </Suspense>
     </main>
   );
 }
 
-async function LoginStatus({ searchParams }: { searchParams: SearchParams }) {
+async function Login({ searchParams }: Pick<PageProps<"/">, "searchParams">) {
   const { error } = await searchParams;
-  const learner = await getCurrentLearner();
-
-  if (learner) {
-    return (
-      <>
-        <p>현재 학습자 ID: {learner.id}</p>
-        <SignOutButton />
-      </>
-    );
-  }
   return <SocialLoginButtons error={typeof error === "string" ? error : undefined} />;
 }
