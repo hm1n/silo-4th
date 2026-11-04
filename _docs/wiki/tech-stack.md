@@ -2,12 +2,12 @@
 
 ## 한 문장 요약
 
-스프린트 1 프로토타입은 Next.js, Vercel, Anthropic 공식 SDK, Tailwind CSS에 Neon Postgres와 Drizzle ORM, Sentry를 더해 만들고, 학습자는 Better Auth로 붙인 Google 로그인으로 구분한다. 카카오와 네이버 로그인은 추후 도입을 검토한다. AI 모델과 UI 컴포넌트는 아직 정하지 않았다.
+스프린트 1 프로토타입은 Next.js, Vercel, Anthropic 공식 SDK, Tailwind CSS에 Neon Postgres와 Drizzle ORM, Sentry를 더해 만들고, 학습자는 Better Auth로 붙인 Google 로그인으로 구분한다. 질문 답변 AI 모델은 Claude Sonnet 5.5를 effort `low`로 쓴다. 카카오와 네이버 로그인은 추후 도입을 검토한다. UI 컴포넌트는 아직 정하지 않았다.
 
 ## 근거
 
-- 원천 자료: [`raw/2026-10-30-tech-stack-decisions.md`](../raw/2026-10-30-tech-stack-decisions.md) (개발자의 결정), [`raw/2026-10-30-social-login-decision.md`](../raw/2026-10-30-social-login-decision.md) (PO와 개발자의 결정), Linear [01 브리프](https://linear.app/silo0/document/01-브리프-5fa343785a20), [02 화면 흐름](https://linear.app/silo0/document/02-화면-흐름-6dbdadb44bbb), [03 상세 일정](https://linear.app/silo0/document/03-상세-일정-1f1a08402713), [03-1 진행 가이드](https://linear.app/silo0/document/03-1-진행-가이드-7acec4859ba4), Linear [4-48 소셜 로그인으로 학습자 구분하기](https://linear.app/silo0/issue/4-48)
-- 확인 날짜: 2026-10-30, 인증 도구와 공급자는 2026-11-02
+- 원천 자료: [`raw/2026-10-30-tech-stack-decisions.md`](../raw/2026-10-30-tech-stack-decisions.md) (개발자의 결정), [`raw/2026-10-30-social-login-decision.md`](../raw/2026-10-30-social-login-decision.md) (PO와 개발자의 결정), Linear [01 브리프](https://linear.app/silo0/document/01-브리프-5fa343785a20), [02 화면 흐름](https://linear.app/silo0/document/02-화면-흐름-6dbdadb44bbb), [03 상세 일정](https://linear.app/silo0/document/03-상세-일정-1f1a08402713), [03-1 진행 가이드](https://linear.app/silo0/document/03-1-진행-가이드-7acec4859ba4), Linear [4-48 소셜 로그인으로 학습자 구분하기](https://linear.app/silo0/issue/4-48), [`raw/2026-11-04-ai-model-selection-research.md`](../raw/2026-11-04-ai-model-selection-research.md) (AI 모델 조사와 개발자의 결정), Linear [4-60](https://linear.app/silo0/issue/4-60)
+- 확인 날짜: 2026-10-30, 인증 도구와 공급자는 2026-11-02, AI 모델은 2026-11-04
 - 결정한 사람: 개발자 (01 브리프에서 "어떻게 동작하게 만드는지"의 DRI)
 - 관련 문서: [개발 규칙](dev-rules.md)
 
@@ -27,6 +27,7 @@
 | 프레임워크 | Next.js(App Router)와 TypeScript | 화면과 API를 한 저장소에서 만들 수 있어 사흘 일정에 알맞다 |
 | 배포 | Vercel | Next.js를 별도 설정 없이 배포하고, Neon을 연결하기 쉽다 |
 | LLM 연결 | `@anthropic-ai/sdk` | LLM을 답변에만 쓰고 Anthropic만 사용하므로 다른 연결 방식으로 바꿀 이유가 없다 |
+| AI 모델 | Claude Sonnet 5.5 `claude-sonnet-5-5`, effort `low` | 단원 본문을 근거로 한 번 답하는 질의응답이라 Opus 5.5의 강점인 장시간 에이전트 작업이 필요 없다. Sonnet 5.5는 Opus 5.5보다 가격이 절반이고 첫 응답이 빠르다. Haiku 5.5는 분류와 추출용이라 시험 공부 설명의 정확도가 걱정되고, 학습자 8명 규모에서 아끼는 금액이 작다. 같은 질문으로 비교하는 테스트는 하지 않고 공식 문서와 비교 자료로 정했다. 정한 사람은 개발자다. [ADR 0007](adr/0007-ai-model.md) |
 | DB | Neon Postgres | 기록 여섯 가지를 서버에 남겨야 하고, PO가 SQL로 지표를 뽑을 수 있다. [ADR 0003](adr/0003-neon-postgres-drizzle.md) |
 | DB 접근 | Drizzle ORM | 스키마에서 타입이 나와 AI가 작성한 DB 코드의 오류를 컴파일 단계에서 잡을 수 있다. [ADR 0003](adr/0003-neon-postgres-drizzle.md) |
 | 오류 알림 | Sentry | 03 상세 일정에 따라 11/6에 설정하고, 서버와 브라우저 오류를 모두 잡는다. 무료 요금제라 알림은 Apps Script가 Sentry API를 조회해 Slack으로 PO에게 보낸다. [ADR 0005](adr/0005-sentry-error-monitoring.md) |
@@ -55,7 +56,6 @@
 
 ## 보류한 것
 
-- **AI 모델:** 11/2까지 같은 질문으로 모델을 비교한 뒤 정한다. 기능 동결(11/4) 뒤에는 바꾸지 않는다. 지금 `.env.example`의 기본값은 `claude-opus-5-5`다.
 - **카카오와 네이버 로그인:** 일정에 여유가 생기면 별도 이슈로 도입을 검토한다. 카카오는 비즈 앱 심사 전에는 이메일을 주지 않아, Better Auth의 필수 이메일 필드에 넣을 대체 값을 정해야 한다. 같은 사람의 Google과 카카오 계정을 합칠지는 카카오를 도입하기 전에 PO가 정한다. ([ADR 0004](adr/0004-social-login.md))
 - **UI 컴포넌트:** 학습 화면은 개발자가 기본 컴포넌트로 만든다(02 화면 목록). shadcn/ui를 도입할지는 디자이너와 상의한 뒤 정한다.
 
@@ -65,8 +65,8 @@
 - 같은 이메일로 다른 공급자에 로그인하면 지금은 `account_not_linked`로 거절한다. Linear 4-48은 다른 학습자로 만든다고 적고 있어 카카오 도입 전에 정해야 한다. ([ADR 0004](adr/0004-social-login.md) "결과")
 - 실제로 쓸 `from` 값 목록은 PO가 정한다. 목록이 정해지면 목록 밖의 값을 `direct`로 바꿀지 다시 정한다. 근거는 Linear 4-49 "열린 질문"이다.
 - 01 브리프에는 PO가 내 이해 기록과 지표 추출을 개발한다고 되어 있지만, 03 상세 일정의 최신본에서는 이 내용이 빠졌다. PO가 코드를 다루는지에 따라 Drizzle 스키마와 데이터 형식을 PO에게 어떻게 넘길지가 달라진다.
+- 기능 동결 전에 Vercel 운영 환경의 `ANTHROPIC_MODEL`을 `claude-sonnet-5-5`로 바꿔야 한다. 모델 비교 테스트를 하지 않아 Sonnet 5.5 `low`의 한국어 답 품질은 운영에서 처음 확인한다. 시험 분야가 안전 분류기의 `cyber`, `bio` 범주에 가까우면 정상 질문이 거절될 수 있다. ([`raw/2026-11-04-ai-model-selection-research.md`](../raw/2026-11-04-ai-model-selection-research.md) "남은 위험")
 
 ## 다시 물어볼 질문
 
 - 11/2 기록 구조 회의 결과가 Drizzle 스키마로 바로 옮겨지는가?
-- 비교 결과 어떤 모델을 고정할 것인가?

@@ -44,6 +44,9 @@ export const test = base.extend<{ consented: boolean }>({
       await context.addCookies([
         { name: "better-auth.session_token", value: signedSessionCookie(token), url: baseURL },
       ]);
+      // 실제 질문 서버는 AI를 부르고, 테스트 학습자에 질문을 남겨 아래에서 학습자를 지우지 못하게 한다.
+      // 기본으로는 응답하지 않아 답을 기다리는 상태로 두고, 답을 다루는 테스트가 page.route로 응답을 정한다.
+      await context.route("**/api/questions", () => {});
 
       await provide(context);
     } finally {
