@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { asc, eq, inArray } from "drizzle-orm";
+import { asc, eq, inArray, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { deleteCreatedLearners, learnerWithEmail, loginWithGoogle, newProfile } from "@/lib/auth/google-login.testing";
 import { getDb } from "@/lib/db";
@@ -447,10 +447,30 @@ describe("질문 보내기", () => {
       fakeStream({ chunks: ["동시에 받은 답"], holdBeforeFirst: bothResponded.promise }),
     );
 
-    const responses = await Promise.all([
-      ask({ questionId, unitId, content: "실패했던 질문" }, { headers }),
-      ask({ questionId, unitId, content: "실패했던 질문" }, { headers }),
-    ]).finally(bothResponded.resolve);
+    // 두 요청이 모두 error를 읽고 상태를 바꾸려는 순간까지 줄을 잠가 둔다. 확인과 갱신이 나뉜 구현이면 둘 다 답을 받는다.
+    let asking: Promise<Response[]> | undefined;
+    await getDb().transaction(async (tx) => {
+      await tx.select({ id: question.id }).from(question).where(eq(question.id, questionId)).for("update");
+      asking = Promise.all([
+        ask({ questionId, unitId, content: "실패했던 질문" }, { headers }),
+        ask({ questionId, unitId, content: "실패했던 질문" }, { headers }),
+      ]);
+      await vi.waitFor(
+        async () => {
+          const { rows } = await tx.execute<{ blocked: number }>(
+            // 두 번째 요청은 잠금을 쥔 이 트랜잭션이 아니라 먼저 기다리는 요청을 기다린다.
+            sql`with waiting as (select pid, pg_blocking_pids(pid) as blockers from pg_stat_activity)
+                select count(*)::int as blocked from waiting
+                where pg_backend_pid() = any(blockers)
+                   or exists (select 1 from waiting first where pg_backend_pid() = any(first.blockers) and first.pid = any(waiting.blockers))`,
+          );
+          expect(rows[0]?.blocked).toBe(2);
+        },
+        { timeout: 10_000, interval: 50 },
+      );
+    });
+    if (!asking) throw new Error("질문을 보내지 못했다.");
+    const responses = await asking.finally(bothResponded.resolve);
 
     expect(responses.map(({ status }) => status).sort()).toEqual([200, 409]);
     const answered = responses.find(({ status }) => status === 200);
