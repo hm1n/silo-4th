@@ -36,6 +36,13 @@
       "when": 1793867998188,
       "tag": "0004_concepts",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793875350741,
+      "tag": "0005_quiz_tables",
+      "breakpoints": true
     }
   ]
 }
