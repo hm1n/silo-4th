@@ -10,6 +10,7 @@ import {
   isNotNull,
   lt,
   ne,
+  sql,
   TransactionRollbackError,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
@@ -153,6 +154,10 @@ export async function answerQuestion(
         question: message.content,
         sessionId: question.sessionId,
         askedAt: question.askedAt,
+        // 답 앞의 DB 왕복마다 첫 글자가 늦어지므로, 다시 시도할 때 쓸 개념 연결을 이 조회에서 함께 읽는다.
+        linkedConceptIds: sql<
+          string[] | null
+        >`(select array_agg(${questionConcept.conceptId}) from ${questionConcept} where ${questionConcept.questionId} = ${question.id})`,
       })
       .from(message)
       .innerJoin(question, eq(question.id, message.questionId))
@@ -167,7 +172,12 @@ export async function answerQuestion(
         and(eq(question.sessionId, asked.sessionId), eq(question.status, "ok"), lt(question.askedAt, asked.askedAt)),
       )
       .orderBy(asc(question.askedAt), asc(question.id), asc(message.seq));
-    const pastSummaries = await pastSummariesFor(questionId, asked.learnerId, asked.question);
+    const pastSummaries = await pastSummariesFor({
+      questionId,
+      learnerId: asked.learnerId,
+      content: asked.question,
+      linkedConceptIds: asked.linkedConceptIds ?? [],
+    });
 
     let reply: string;
     try {
@@ -194,9 +204,22 @@ export async function answerQuestion(
 }
 
 // 분류와 과거 요약은 답을 돕는 일이라, 실패하면 과거 요약 없이 답한다.
-async function pastSummariesFor(questionId: string, learnerId: string, content: string) {
+async function pastSummariesFor({
+  questionId,
+  learnerId,
+  content,
+  linkedConceptIds,
+}: {
+  questionId: string;
+  learnerId: string;
+  content: string;
+  linkedConceptIds: string[];
+}) {
   try {
-    const { conceptIds, keywords } = await tagQuestion(questionId, content);
+    const { conceptIds, keywords } =
+      linkedConceptIds.length > 0
+        ? { conceptIds: linkedConceptIds, keywords: [] }
+        : await tagQuestion(questionId, content);
     return await findPastSummaries({ questionId, learnerId, conceptIds, keywords });
   } catch (error) {
     reportQuestionError(error);
@@ -204,16 +227,10 @@ async function pastSummariesFor(questionId: string, learnerId: string, content: 
   }
 }
 
-// 다시 시도한 질문은 처음 분류한 개념을 그대로 쓴다. 시도마다 분류가 달라져 개념이 쌓이지 않게 한다.
+// 다시 시도한 질문은 처음 분류한 개념을 그대로 쓰므로, 개념이 연결되지 않은 질문만 분류한다. 시도마다 분류가 달라져 개념이 쌓이지 않게 한다.
 // AI가 뽑은 키워드는 개념이 없을 때 과거 질문을 찾는 데만 쓰고, 저장하는 키워드는 요약에서 뽑는다.
 async function tagQuestion(questionId: string, content: string) {
   const db = getDb();
-  const linked = await db
-    .select({ conceptId: questionConcept.conceptId })
-    .from(questionConcept)
-    .where(eq(questionConcept.questionId, questionId));
-  if (linked.length > 0) return { conceptIds: linked.map(({ conceptId }) => conceptId), keywords: [] };
-
   const concepts = await db.select({ id: concept.id, title: concept.title }).from(concept).orderBy(asc(concept.id));
   const classified = await classifyQuestion(content, concepts);
   const conceptIds = knownConceptIds(
