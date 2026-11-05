@@ -9,10 +9,10 @@ const FIRST_TEXT_TIMEOUT_MS = 60_000;
 
 let client: Anthropic | undefined;
 
-// 학습자가 읽고 있던 단원 본문을 함께 넘겨, 그 단원 내용을 알고 답하게 한다.
+// 학습자가 읽고 있던 단원 본문과 같은 대화의 앞 질문과 답을 함께 넘겨, 그 내용을 알고 답하게 한다.
 // 답 글이 생기는 대로 onText로 넘기고, 끝까지 받은 답 전체를 돌려준다. 답을 끝까지 받지 못하면 예외를 던진다.
 export async function streamAnswer(
-  { unitContent, question }: { unitContent: string; question: string },
+  { unitContent, history, question }: { unitContent: string; history: Anthropic.MessageParam[]; question: string },
   onText: (text: string) => void,
 ) {
   client ??= new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
@@ -36,7 +36,7 @@ export async function streamAnswer(
           { type: "text", text: "학습자가 아래 단원을 읽다가 질문했다. 단원 내용을 바탕으로 한국어로 답한다." },
           { type: "text", text: `<unit>\n${unitContent}\n</unit>`, cache_control: { type: "ephemeral" } },
         ],
-        messages: [{ role: "user", content: question }],
+        messages: [...history, { role: "user", content: question }],
       },
       { signal: abort.signal },
     );

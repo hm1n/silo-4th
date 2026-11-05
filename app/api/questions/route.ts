@@ -1,9 +1,7 @@
-import { captureException } from "@sentry/nextjs";
 import { after } from "next/server";
 import { findLearner } from "@/lib/auth";
-import { safeMessage } from "@/lib/auth/sentry-logger";
 import { env } from "@/lib/env";
-import { answerQuestion, type Claim, claimQuestion, parseAskInput } from "@/lib/questions";
+import { answerQuestion, type Claim, claimQuestion, parseAskInput, reportQuestionError } from "@/lib/questions";
 
 // Vercel Hobby에서 함수가 쓸 수 있는 최대 시간이다. 연결이 끊긴 뒤에도 이 안에서 답을 끝까지 받아 저장한다.
 export const maxDuration = 300;
@@ -33,7 +31,7 @@ export async function POST(request: Request) {
   try {
     claim = await claimQuestion(learner.id, input);
   } catch (error) {
-    report(error);
+    reportQuestionError(error);
     return status(500);
   }
 
@@ -49,7 +47,7 @@ export async function POST(request: Request) {
           const result = await answerQuestion(input.questionId, (text) => send("delta", { text }));
           send(result === "ok" ? "done" : "error");
         } catch (error) {
-          report(error);
+          reportQuestionError(error);
           send("error");
         }
       });
@@ -60,11 +58,6 @@ export async function POST(request: Request) {
 
 function status(code: number) {
   return new Response(null, { status: code });
-}
-
-// DB 오류 메시지는 쿼리 값으로 질문 원문과 AI 답을 담는다. 값을 지운 메시지만 Sentry로 보낸다.
-function report(error: unknown) {
-  captureException(new Error(safeMessage(error, "questions")));
 }
 
 function eventStream(run: (send: Send) => Promise<void>) {

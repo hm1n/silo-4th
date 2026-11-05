@@ -109,6 +109,19 @@ export const concept = pgTable("concepts", {
   title: text("title").notNull(),
 });
 
+// 질문 창의 대화 하나다. 클라이언트가 ID를 만들고, 그 대화의 첫 질문을 저장할 때 함께 저장한다.
+export const questionSession = pgTable(
+  "question_sessions",
+  {
+    id: uuid("id").primaryKey(),
+    learnerId: uuid("learner_id")
+      .notNull()
+      .references(() => learner.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [index("question_sessions_learner_id_idx").on(table.learnerId)],
+);
+
 // 질문 내역은 지우지 않으므로 학습자를 지워도 함께 지우지 않는다.
 export const question = pgTable(
   "questions",
@@ -118,6 +131,9 @@ export const question = pgTable(
     learnerId: uuid("learner_id")
       .notNull()
       .references(() => learner.id),
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => questionSession.id),
     unitId: text("unit_id").references(() => unit.id),
     askedAt: timestamp("asked_at", { withTimezone: true }).defaultNow().notNull(),
     studyDay: date("study_day").notNull(),
@@ -130,6 +146,7 @@ export const question = pgTable(
   },
   (table) => [
     index("questions_learner_id_idx").on(table.learnerId),
+    index("questions_session_id_idx").on(table.sessionId),
     check("questions_status_check", sql`${table.status} in (${oneOf(QUESTION_STATUSES)})`),
   ],
 );
