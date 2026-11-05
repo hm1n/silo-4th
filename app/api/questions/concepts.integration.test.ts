@@ -384,12 +384,16 @@ describe("질문 개념 분류와 요약", () => {
     expect((await questionRow(questionId))?.status).toBe("error");
     expect(await linkedConcepts(questionId)).toEqual([x]);
     aiAnswers("다시 받은 답");
+    await afterResponse();
+    ai.create.mockClear();
 
     const received = await events(await ask({ questionId, unitId, content: "다시 보낼 질문" }, headers));
+    await afterResponse();
 
     expect(received.at(-1)).toBe("done");
     expect((await questionRow(questionId))?.status).toBe("ok");
     expect(await linkedConcepts(questionId)).toEqual([x]);
+    expect(JSON.stringify(ai.create.mock.calls), "분류 AI를 다시 부르지 않음").not.toContain("<concepts>");
   });
 
   it("TC-68 과거 질문이 많으면 최근 5개의 요약만 넘겨요", async () => {
