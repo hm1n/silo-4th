@@ -393,7 +393,7 @@ describe("질문 개념 분류와 요약", () => {
     expect(received.at(-1)).toBe("done");
     expect((await questionRow(questionId))?.status).toBe("ok");
     expect(await linkedConcepts(questionId)).toEqual([x]);
-    expect(JSON.stringify(ai.create.mock.calls), "분류 AI를 다시 부르지 않음").not.toContain("<concepts>");
+    expect(ai.create, "분류 AI는 다시 부르지 않고 요약만 한 번 부름").toHaveBeenCalledTimes(1);
   });
 
   it("TC-68 과거 질문이 많으면 최근 5개의 요약만 넘겨요", async () => {
