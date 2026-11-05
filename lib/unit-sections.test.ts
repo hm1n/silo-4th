@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { unitSections } from "./unit-sections";
+import { sectionConceptId, unitSections } from "./unit-sections";
 
 const content = `# 조인
 
@@ -35,5 +35,27 @@ describe("단원 절", () => {
     expect(new Set(keys).size).toBe(keys.length);
     expect(keys.every((key) => /^[^\s#]+$/.test(key))).toBe(true);
     expect(unitSections(content)).toEqual(sections);
+  });
+});
+
+describe("절 개념 ID", () => {
+  it("TC-94 단원 본문의 절마다 개념 ID를 붙여요", () => {
+    const body = `# 집계
+
+### 1. 집계 함수와 NULL
+
+\`\`\`sql
+### 코드 안의 줄은 절이 아니에요
+SELECT COUNT(*) FROM t;
+\`\`\`
+
+### 정리
+
+### 2. GROUP BY 규칙
+`;
+
+    const conceptIds = unitSections(body).map((section) => sectionConceptId("s2-05", section));
+
+    expect(conceptIds).toEqual(["s2-05-1", null, "s2-05-2"]);
   });
 });

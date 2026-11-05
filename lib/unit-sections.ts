@@ -26,6 +26,14 @@ export function unitSections(content: string): UnitSection[] {
   return labelSections(parser.parse(content)).map(({ section }) => section);
 }
 
+const NUMBERED_TITLE = /^(\d+)\.\s/;
+
+// 개념 ID는 단원 ID와 소제목 번호로 만든다. 번호 없는 소제목은 개념이 아니라서 없고, 앞 절의 번호도 밀지 않는다.
+export function sectionConceptId(unitId: string, { title }: UnitSection): string | null {
+  const number = NUMBERED_TITLE.exec(title)?.[1];
+  return number === undefined ? null : `${unitId}-${number}`;
+}
+
 export function remarkSectionIds() {
   return (tree: Root) => {
     for (const { heading, section } of labelSections(tree)) {
