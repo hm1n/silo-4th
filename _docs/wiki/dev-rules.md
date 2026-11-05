@@ -32,7 +32,8 @@
 | 단위 테스트는 `*.test.ts`, 통합 테스트는 `*.integration.test.ts`, E2E는 `e2e/*.spec.ts`로 이름을 짓는다. 실행은 `npm test`, `npm run test:integration`, `npm run test:e2e`로 나눈다 | `vitest.config.ts` `projects`, `playwright.config.ts` | [0006](adr/0006-test-strategy.md) |
 | 통합 테스트와 E2E는 Neon `test` 브랜치에만 연결한다. 주소와 키는 `.env.test.local`에 두고, 통합 테스트 프로젝트와 E2E 설정만 이 파일을 읽는다. 파일이 없으면 E2E는 실행 전에 실패한다 | `vitest.config.ts` `integration` 프로젝트의 `env`, `playwright.config.ts` | [0006](adr/0006-test-strategy.md) |
 | E2E 로그인은 테스트 코드가 테스트 DB에 학습자와 세션을 만들고 서명한 세션 쿠키를 넣어 처리한다. 앱 코드에는 테스트용 로그인 우회 장치를 두지 않는다 | `e2e/fixtures.ts`, 코드 리뷰 | [0006](adr/0006-test-strategy.md) |
-| AI 모델 ID를 코드에 쓰지 않고 `lib/env.ts`의 `env.ANTHROPIC_MODEL`로만 읽는다. 운영 모델은 Vercel 환경 변수로 정한다 | `lib/env.ts`, `lib/llm/answer.ts`, 루트 `CLAUDE.md`, 코드 리뷰 (기계 검사 없음) | [0007](adr/0007-ai-model.md) |
+| AI 모델 ID를 코드에 쓰지 않고 `lib/env.ts`의 `env.ANTHROPIC_MODEL`과 `env.ANTHROPIC_UTILITY_MODEL`로만 읽는다. 질문 답변은 `ANTHROPIC_MODEL`, 질문 개념 분류와 요약은 `ANTHROPIC_UTILITY_MODEL`을 쓴다. 운영 모델은 Vercel 환경 변수로 정한다 | `lib/env.ts`, `lib/llm/`, 루트 `CLAUDE.md`, 코드 리뷰 (기계 검사 없음) | [0007](adr/0007-ai-model.md), [0008](adr/0008-question-concept-summary.md) |
+| AI가 고른 개념 ID는 `concepts`에 있는 것만 남기고, 키워드는 소문자로 맞춰 공백과 중복을 없앤 뒤 저장하거나 검색에 쓴다. 분류와 요약이 실패해도 질문의 답은 막지 않는다 | 질문 개념 분류와 요약 코드, 노션 TC-64~66, TC-70 | [0008](adr/0008-question-concept-summary.md) |
 | DB는 `lib/db`의 `getDb()`로만 접근하고, 테이블은 `lib/db/schema.ts`에만 정의한다. 이 모듈을 클라이언트 컴포넌트에서 import하면 빌드가 실패한다 | `lib/db/index.ts` (`server-only`) | [0003](adr/0003-neon-postgres-drizzle.md) |
 
 ## 설계 결정
@@ -46,6 +47,7 @@
 | [0005](adr/0005-sentry-error-monitoring.md) | 오류 모니터링은 Sentry 무료 요금제로 하고, 알림은 Apps Script로 Slack에 보낸다 | 확정 |
 | [0006](adr/0006-test-strategy.md) | 테스트는 노션 DB에서 확정한 케이스만 옮긴다. 단위는 Vitest, E2E는 Playwright로 하고, 통합 테스트는 DB를 변경하는 서버 코드에만 둔다 | 확정 |
 | [0007](adr/0007-ai-model.md) | 질문 답변 AI 모델은 Claude Sonnet 5.5를 effort low로 쓴다 | 확정 |
+| [0008](adr/0008-question-concept-summary.md) | 질문 개념 분류와 요약은 Haiku 5.5로 따로 부르고, 실패해도 답을 막지 않는다 | 확정 |
 
 ## 아직 도입하지 않은 규칙
 
@@ -60,7 +62,7 @@
 | 확정 테스트 수정 차단 훅, 케이스 ID 검사, Stop 훅의 테스트 범위 | 0006의 `제안` 항목을 개발자가 정하는 일 |
 | CI, pre-commit | 의존성과 배포 방식 |
 
-LLM 출력 스키마 규칙은 이번 스프린트에서 AI가 개념을 고르거나 문제를 만들지 않아 필요하지 않다. (근거: `raw/2026-10-30-tech-stack-decisions.md` "확정한 것")
+LLM 출력 스키마 규칙은 이번 스프린트에서 AI가 개념을 고르거나 문제를 만들지 않아 필요하지 않다고 보았다. (근거: `raw/2026-10-30-tech-stack-decisions.md` "확정한 것") 2026-11-04 [0008](adr/0008-question-concept-summary.md)에서 AI가 질문의 개념을 고르기로 해, 분류 출력은 위 "적용된 규칙"대로 경계에서 걸러 낸다. 출력 스키마를 기계로 검사하는 규칙은 아직 두지 않았다.
 
 ## 확인 필요
 
