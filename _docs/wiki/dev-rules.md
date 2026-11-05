@@ -35,6 +35,8 @@
 | AI 모델 ID를 코드에 쓰지 않고 `lib/env.ts`의 `env.ANTHROPIC_MODEL`과 `env.ANTHROPIC_UTILITY_MODEL`로만 읽는다. 질문 답변은 `ANTHROPIC_MODEL`, 질문 개념 분류와 요약은 `ANTHROPIC_UTILITY_MODEL`을 쓴다. 운영 모델은 Vercel 환경 변수로 정한다 | `lib/env.ts`, `lib/llm/`, 루트 `CLAUDE.md`, 코드 리뷰 (기계 검사 없음) | [0007](adr/0007-ai-model.md), [0008](adr/0008-question-concept-summary.md) |
 | AI가 고른 개념 ID는 `concepts`에 있는 것만 남기고, 키워드는 소문자로 맞춰 공백과 중복을 없앤 뒤 저장하거나 검색에 쓴다. 분류와 요약이 실패해도 질문의 답은 막지 않는다 | 질문 개념 분류와 요약 코드, 노션 TC-64~66, TC-70 | [0008](adr/0008-question-concept-summary.md) |
 | DB는 `lib/db`의 `getDb()`로만 접근하고, 테이블은 `lib/db/schema.ts`에만 정의한다. 이 모듈을 클라이언트 컴포넌트에서 import하면 빌드가 실패한다 | `lib/db/index.ts` (`server-only`) | [0003](adr/0003-neon-postgres-drizzle.md) |
+| DB 마이그레이션은 Vercel 배포 빌드에서 자동으로 적용한다. 프리뷰는 `preview/<브랜치>`, 운영은 `production` 브랜치에 들어간다. 운영 DB에 손으로 돌리지 않고, 배포와 연결되지 않은 `test`, `vercel-dev`만 손으로 적용한다 | `vercel.json` `buildCommand`, `drizzle.config.ts` | [0009](adr/0009-migrate-on-deploy.md) |
+| 푸시한 마이그레이션은 다시 생성하거나 고치지 않고 새 마이그레이션으로 더한다. 다른 브랜치와 충돌하면 `_journal.json`을 손으로 합치지 않고 내 마이그레이션을 지운 뒤 `npm run db:generate`로 다시 만든다. 마이그레이션은 이전 코드가 새 스키마에서도 돌아가게 만든다 | 코드 리뷰 (기계 검사 없음) | [0009](adr/0009-migrate-on-deploy.md) |
 
 ## 설계 결정
 
@@ -48,6 +50,7 @@
 | [0006](adr/0006-test-strategy.md) | 테스트는 노션 DB에서 확정한 케이스만 옮긴다. 단위는 Vitest, E2E는 Playwright로 하고, 통합 테스트는 DB를 변경하는 서버 코드에만 둔다 | 확정 |
 | [0007](adr/0007-ai-model.md) | 질문 답변 AI 모델은 Claude Sonnet 5.5를 effort low로 쓴다 | 확정 |
 | [0008](adr/0008-question-concept-summary.md) | 질문 개념 분류와 요약은 Haiku 5.5로 따로 부르고, 실패해도 답을 막지 않는다 | 확정 |
+| [0009](adr/0009-migrate-on-deploy.md) | DB 마이그레이션은 Vercel 배포 빌드에서 자동으로 적용한다 | 확정 |
 
 ## 아직 도입하지 않은 규칙
 
