@@ -102,17 +102,26 @@ async function loginConsented() {
 
 async function pastQuestion(
   learnerId: string,
-  { summary, keywords = [], conceptIds = [], askedAt = new Date() }: {
+  {
+    summary,
+    keywords = [],
+    conceptIds = [],
+    askedAt = new Date(),
+    sessionId,
+    turn,
+  }: {
     summary: string;
     keywords?: string[];
     conceptIds?: string[];
     askedAt?: Date;
+    // 주지 않으면 질문마다 새 대화에 둔다.
+    sessionId?: string;
+    turn?: { question: string; answer: string };
   },
 ) {
   const { id: unitId } = await firstUnit();
   const id = newQuestionId();
-  const sessionId = newSessionId();
-  await getDb().insert(questionSession).values({ id: sessionId, learnerId });
+  sessionId ??= await newSession(learnerId);
   await getDb().insert(question).values({
     id,
     learnerId,
@@ -132,10 +141,24 @@ async function pastQuestion(
       .insert(questionConcept)
       .values(conceptIds.map((conceptId) => ({ questionId: id, conceptId })));
   }
+  if (turn) {
+    await getDb()
+      .insert(message)
+      .values([
+        { questionId: id, seq: 1, role: "user", content: turn.question },
+        { questionId: id, seq: 2, role: "assistant", content: turn.answer },
+      ]);
+  }
+}
+
+async function newSession(learnerId: string) {
+  const id = newSessionId();
+  await getDb().insert(questionSession).values({ id, learnerId });
+  return id;
 }
 
 // 요청마다 새 세션으로 보내, 같은 세션의 앞 대화가 아니라 과거 요약만 AI에게 넘어가는지 본다.
-function ask(body: { questionId: string; unitId: string; content: string }, headers: Headers) {
+function ask(body: { questionId: string; unitId: string; content: string; sessionId?: string }, headers: Headers) {
   const requestHeaders = new Headers(headers);
   requestHeaders.set("origin", new URL(env.AUTH_URL).origin);
   requestHeaders.set("content-type", "application/json");
@@ -268,6 +291,29 @@ describe("질문 개념 분류와 요약", () => {
     expect(sent).toContain("과거 요약 A");
     expect(sent).not.toContain("과거 요약 B");
     expect(sent).not.toContain("과거 요약 C");
+  });
+
+  it("TC-86 지금 대화의 질문은 과거 요약으로 다시 넘기지 않아요", async () => {
+    const { headers, learnerId } = await loginConsented();
+    const { id: unitId } = await firstUnit();
+    const [x] = await newConcepts(1);
+    const sessionId = await newSession(learnerId);
+    await pastQuestion(learnerId, {
+      summary: "과거 요약 A",
+      conceptIds: [x!],
+      sessionId,
+      turn: { question: "같은 대화의 앞 질문", answer: "같은 대화의 앞 답" },
+    });
+    await pastQuestion(learnerId, { summary: "과거 요약 B", conceptIds: [x!] });
+    aiClassifies([x!]);
+
+    await events(await ask({ questionId: newQuestionId(), unitId, content: "개념 X 질문", sessionId }, headers));
+
+    const sent = sentToAnswerAi();
+    expect(sent).toContain("같은 대화의 앞 질문");
+    expect(sent).toContain("같은 대화의 앞 답");
+    expect(sent).not.toContain("과거 요약 A");
+    expect(sent).toContain("과거 요약 B");
   });
 
   it("TC-64 개념 분류가 실패해도 답을 받고 질문은 ok로 남아요", async () => {
