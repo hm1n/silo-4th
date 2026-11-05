@@ -3,7 +3,7 @@ import { asc, eq, inArray, or } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { deleteCreatedLearners, learnerWithEmail, loginWithGoogle, newProfile } from "@/lib/auth/google-login.testing";
 import { getDb } from "@/lib/db";
-import { concept, learner, message, question, questionConcept, unit } from "@/lib/db/schema";
+import { concept, learner, message, question, questionConcept, questionSession, unit } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import { studyDay } from "@/lib/study-day";
 import { POST } from "./route";
@@ -24,6 +24,7 @@ vi.mock("@anthropic-ai/sdk", () => ({
 const APP_VERSION = "test-version";
 const createdQuestionIds: string[] = [];
 const createdConceptIds: string[] = [];
+const createdSessionIds: string[] = [];
 
 function fakeStream({ chunks, error }: { chunks: string[]; error?: Error }) {
   return {
@@ -66,6 +67,12 @@ function newQuestionId() {
   return id;
 }
 
+function newSessionId() {
+  const id = randomUUID();
+  createdSessionIds.push(id);
+  return id;
+}
+
 async function firstUnit() {
   const [found] = await getDb().select().from(unit).orderBy(asc(unit.id)).limit(1);
   if (!found) throw new Error("테스트 DB에 단원이 없다.");
@@ -104,9 +111,12 @@ async function pastQuestion(
 ) {
   const { id: unitId } = await firstUnit();
   const id = newQuestionId();
+  const sessionId = newSessionId();
+  await getDb().insert(questionSession).values({ id: sessionId, learnerId });
   await getDb().insert(question).values({
     id,
     learnerId,
+    sessionId,
     unitId,
     askedAt,
     studyDay: studyDay(askedAt),
@@ -124,6 +134,7 @@ async function pastQuestion(
   }
 }
 
+// 요청마다 새 세션으로 보내, 같은 세션의 앞 대화가 아니라 과거 요약만 AI에게 넘어가는지 본다.
 function ask(body: { questionId: string; unitId: string; content: string }, headers: Headers) {
   const requestHeaders = new Headers(headers);
   requestHeaders.set("origin", new URL(env.AUTH_URL).origin);
@@ -132,7 +143,7 @@ function ask(body: { questionId: string; unitId: string; content: string }, head
     new Request(new URL("/api/questions", env.AUTH_URL), {
       method: "POST",
       headers: requestHeaders,
-      body: JSON.stringify(body),
+      body: JSON.stringify({ sessionId: newSessionId(), ...body }),
     }),
   );
 }
@@ -202,6 +213,8 @@ afterEach(async () => {
     await db.delete(message).where(inArray(message.questionId, questionIds));
     await db.delete(question).where(inArray(question.id, questionIds));
   }
+  const sessionIds = createdSessionIds.splice(0);
+  if (sessionIds.length > 0) await db.delete(questionSession).where(inArray(questionSession.id, sessionIds));
   if (conceptIds.length > 0) await db.delete(concept).where(inArray(concept.id, conceptIds));
   await deleteCreatedLearners();
 });
