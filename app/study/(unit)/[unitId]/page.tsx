@@ -4,9 +4,10 @@ import { Suspense } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { requireLearner } from "@/lib/auth";
-import { remarkSectionIds, unitSections } from "@/lib/unit-sections";
+import { remarkSectionIds, sectionConceptId, unitSections } from "@/lib/unit-sections";
 import { findUnit, listUnits } from "@/lib/units";
 import { ScrollToSection } from "../_components/scroll-to-section";
+import { UnitBody } from "../_components/unit-body";
 
 type Params = PageProps<"/study/[unitId]">["params"];
 
@@ -25,6 +26,7 @@ async function StudyUnit({ params }: { params: Params }) {
   const [units, current] = await Promise.all([listUnits(), findUnit(unitId)]);
   if (!current) notFound();
   const sections = unitSections(current.content);
+  const trackedSections = sections.map((section) => ({ key: section.key, conceptId: sectionConceptId(current.id, section) }));
 
   return (
     <>
@@ -59,10 +61,10 @@ async function StudyUnit({ params }: { params: Params }) {
           내 이해 기록
         </button>
       </nav>
-      <article className="unit-body min-w-0 flex-1 overflow-y-auto p-8">
+      <UnitBody sections={trackedSections}>
         <Markdown remarkPlugins={[remarkGfm, remarkSectionIds]}>{current.content}</Markdown>
         <ScrollToSection />
-      </article>
+      </UnitBody>
     </>
   );
 }

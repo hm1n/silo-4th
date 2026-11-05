@@ -2,11 +2,11 @@ import { createHmac, randomUUID } from "node:crypto";
 import { test as base } from "@playwright/test";
 import { asc, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/neon-http";
-import { learner, message, question, questionSession, session, unit } from "@/lib/db/schema";
+import { learner, message, question, questionSession, sectionView, session, unit } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import { TEST_SOURCE } from "@/lib/source";
 import { studyDay } from "@/lib/study-day";
-import { unitSections } from "@/lib/unit-sections";
+import { sectionConceptId, unitSections } from "@/lib/unit-sections";
 
 const db = drizzle({ connection: env.DATABASE_URL });
 
@@ -35,13 +35,18 @@ export async function createLearner(consented = true) {
   return created.id;
 }
 
-// 질문 기록은 학습자를 지워도 함께 지워지지 않으므로 먼저 지운다.
+// 질문 기록과 본 절 기록은 학습자를 지워도 함께 지워지지 않으므로 먼저 지운다.
+// 화면을 닫을 때 보낸 본 절 기록이 정리 중에 도착할 수 있다. 학습자 줄을 먼저 잠가 그 기록이 끝난 뒤에 함께 지운다.
 export async function deleteLearner(learnerId: string) {
   const asked = db.select({ id: question.id }).from(question).where(eq(question.learnerId, learnerId));
-  await db.delete(message).where(inArray(message.questionId, asked));
-  await db.delete(question).where(eq(question.learnerId, learnerId));
-  await db.delete(questionSession).where(eq(questionSession.learnerId, learnerId));
-  await db.delete(learner).where(eq(learner.id, learnerId));
+  await db.batch([
+    db.select({ id: learner.id }).from(learner).where(eq(learner.id, learnerId)).for("update"),
+    db.delete(sectionView).where(eq(sectionView.learnerId, learnerId)),
+    db.delete(message).where(inArray(message.questionId, asked)),
+    db.delete(question).where(eq(question.learnerId, learnerId)),
+    db.delete(questionSession).where(eq(questionSession.learnerId, learnerId)),
+    db.delete(learner).where(eq(learner.id, learnerId)),
+  ]);
 }
 
 // 질문 서버가 답을 끝까지 받아 저장한 결과를 DB에 직접 남긴다.
@@ -101,5 +106,17 @@ export function firstUnits(count: number) {
 
 export async function unitsWithSections() {
   const units = await db.select().from(unit).orderBy(asc(unit.id));
-  return units.map(({ id, title, content }) => ({ id, title, sections: unitSections(content) }));
+  return units.map(({ id, title, content }) => ({
+    id,
+    title,
+    sections: unitSections(content).map((section) => ({ ...section, conceptId: sectionConceptId(id, section) })),
+  }));
+}
+
+export function sectionViewsOf(learnerId: string) {
+  return db
+    .select({ conceptId: sectionView.conceptId, studyDay: sectionView.studyDay, dwellSec: sectionView.dwellSec })
+    .from(sectionView)
+    .where(eq(sectionView.learnerId, learnerId))
+    .orderBy(asc(sectionView.conceptId));
 }

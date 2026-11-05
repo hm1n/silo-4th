@@ -11,7 +11,7 @@ export function ScrollToSection() {
   return null;
 }
 
-function sectionKey(hash: string) {
+export function sectionKey(hash: string) {
   try {
     return decodeURIComponent(hash.slice(1));
   } catch {
