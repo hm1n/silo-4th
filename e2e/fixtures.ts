@@ -1,10 +1,11 @@
 import { createHmac, randomUUID } from "node:crypto";
 import { test as base } from "@playwright/test";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/neon-http";
-import { learner, session, unit } from "@/lib/db/schema";
+import { learner, message, question, questionSession, session, unit } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import { TEST_SOURCE } from "@/lib/source";
+import { studyDay } from "@/lib/study-day";
 import { unitSections } from "@/lib/unit-sections";
 
 const db = drizzle({ connection: env.DATABASE_URL });
@@ -19,45 +20,83 @@ export function daysFromNow(days: number) {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
+export async function createLearner(consented = true) {
+  const [created] = await db
+    .insert(learner)
+    .values({
+      name: "E2E 학습자",
+      email: `${randomUUID()}@e2e.test`,
+      source: TEST_SOURCE,
+      isTest: true,
+      ...(consented && { consentedAt: new Date(), examDate: daysFromNow(30) }),
+    })
+    .returning({ id: learner.id });
+  if (!created) throw new Error("E2E 학습자를 만들지 못했다.");
+  return created.id;
+}
+
+// 질문 기록은 학습자를 지워도 함께 지워지지 않으므로 먼저 지운다.
+export async function deleteLearner(learnerId: string) {
+  const asked = db.select({ id: question.id }).from(question).where(eq(question.learnerId, learnerId));
+  await db.delete(message).where(inArray(message.questionId, asked));
+  await db.delete(question).where(eq(question.learnerId, learnerId));
+  await db.delete(questionSession).where(eq(questionSession.learnerId, learnerId));
+  await db.delete(learner).where(eq(learner.id, learnerId));
+}
+
+// 질문 서버가 답을 끝까지 받아 저장한 결과를 DB에 직접 남긴다.
+export async function saveAnswered(
+  learnerId: string,
+  { questionId, sessionId, unitId, content }: { questionId: string; sessionId: string; unitId: string; content: string },
+  answer: string,
+) {
+  const askedAt = new Date();
+  await db.insert(questionSession).values({ id: sessionId, learnerId }).onConflictDoNothing();
+  await db.insert(question).values({
+    id: questionId,
+    learnerId,
+    sessionId,
+    unitId,
+    askedAt,
+    studyDay: studyDay(askedAt),
+    answeredAt: askedAt,
+    status: "ok",
+    appVersion: "e2e",
+  });
+  await db.insert(message).values([
+    { questionId, seq: 1, role: "user", content },
+    { questionId, seq: 2, role: "assistant", content: answer },
+  ]);
+}
+
 // 시험 날짜와 저장 동의는 한 폼에서 함께 저장하므로, 테스트 학습자도 둘 다 있거나 둘 다 없다.
-export const test = base.extend<{ consented: boolean }>({
+export const test = base.extend<{ consented: boolean; learnerId: string }>({
   consented: [true, { option: true }],
-  context: async ({ context, baseURL, consented }, provide) => {
-    const [created] = await db
-      .insert(learner)
-      .values({
-        name: "E2E 학습자",
-        email: `${randomUUID()}@e2e.test`,
-        source: TEST_SOURCE,
-        isTest: true,
-        ...(consented && { consentedAt: new Date(), examDate: daysFromNow(30) }),
-      })
-      .returning({ id: learner.id });
-    if (!created || !baseURL) throw new Error("E2E 학습자를 만들지 못했다.");
-
+  learnerId: async ({ consented }, provide) => {
+    const learnerId = await createLearner(consented);
     try {
-      const token = randomUUID();
-      await db.insert(session).values({
-        token,
-        userId: created.id,
-        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-      });
-      await context.addCookies([
-        { name: "better-auth.session_token", value: signedSessionCookie(token), url: baseURL },
-      ]);
-      // 실제 질문 서버는 AI를 부르고, 테스트 학습자에 질문을 남겨 아래에서 학습자를 지우지 못하게 한다.
-      // 기본으로는 응답하지 않아 답을 기다리는 상태로 두고, 답을 다루는 테스트가 page.route로 응답을 정한다.
-      await context.route("**/api/questions", () => {});
-
-      await provide(context);
+      await provide(learnerId);
     } finally {
-      await db.delete(learner).where(eq(learner.id, created.id));
+      await deleteLearner(learnerId);
     }
+  },
+  context: async ({ context, baseURL, learnerId }, provide) => {
+    if (!baseURL) throw new Error("baseURL이 없다.");
+    const token = randomUUID();
+    await db.insert(session).values({
+      token,
+      userId: learnerId,
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+    });
+    await context.addCookies([{ name: "better-auth.session_token", value: signedSessionCookie(token), url: baseURL }]);
+    // 실제 질문 서버는 AI를 부른다. 기본으로는 응답하지 않아 답을 기다리는 상태로 두고, 답을 다루는 테스트가 page.route로 응답을 정한다.
+    await context.route("**/api/questions", () => {});
+    await provide(context);
   },
 });
 
 export function firstUnits(count: number) {
-  return db.select({ title: unit.title }).from(unit).orderBy(asc(unit.id)).limit(count);
+  return db.select({ id: unit.id, title: unit.title }).from(unit).orderBy(asc(unit.id)).limit(count);
 }
 
 export async function unitsWithSections() {
