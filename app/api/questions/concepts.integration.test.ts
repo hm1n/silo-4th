@@ -1,0 +1,373 @@
+import { randomUUID } from "node:crypto";
+import { asc, eq, inArray, or } from "drizzle-orm";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { deleteCreatedLearners, learnerWithEmail, loginWithGoogle, newProfile } from "@/lib/auth/google-login.testing";
+import { getDb } from "@/lib/db";
+import { concept, learner, message, question, questionConcept, unit } from "@/lib/db/schema";
+import { env } from "@/lib/env";
+import { studyDay } from "@/lib/study-day";
+import { POST } from "./route";
+
+const ai = vi.hoisted(() => ({ stream: vi.fn(), create: vi.fn() }));
+const afterTasks = vi.hoisted((): Promise<unknown>[] => []);
+
+vi.mock("next/server", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  after: (task: Promise<unknown>) => afterTasks.push(task),
+}));
+vi.mock("@anthropic-ai/sdk", () => ({
+  default: class {
+    messages = { stream: ai.stream, create: ai.create };
+  },
+}));
+
+const APP_VERSION = "test-version";
+const createdQuestionIds: string[] = [];
+const createdConceptIds: string[] = [];
+
+function fakeStream({ chunks, error }: { chunks: string[]; error?: Error }) {
+  return {
+    async *[Symbol.asyncIterator]() {
+      for (const text of chunks) yield { type: "content_block_delta", index: 0, delta: { type: "text_delta", text } };
+      if (error) throw error;
+    },
+    finalMessage: async () => ({ stop_reason: "end_turn", content: [{ type: "text", text: chunks.join("") }] }),
+  };
+}
+
+function aiAnswers(...chunks: string[]) {
+  ai.stream.mockImplementation(() => fakeStream({ chunks }));
+}
+
+function aiFails() {
+  ai.stream.mockImplementationOnce(() => fakeStream({ chunks: [], error: new Error("AI 오류") }));
+}
+
+function jsonReply(value: object) {
+  return { stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(value) }] };
+}
+
+// 분류는 답하기 전에, 요약은 답한 뒤에 부르므로 순서대로 한 번씩 정해 둔다.
+function aiClassifies(conceptIds: string[], keywords: string[] = []) {
+  ai.create.mockResolvedValueOnce(jsonReply({ conceptIds, keywords }));
+}
+
+function aiSummarizes(summary: string, keywords: string[]) {
+  ai.create.mockResolvedValueOnce(jsonReply({ summary, keywords }));
+}
+
+function useFakeTimers() {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"], shouldAdvanceTime: true });
+}
+
+function newQuestionId() {
+  const id = randomUUID();
+  createdQuestionIds.push(id);
+  return id;
+}
+
+async function firstUnit() {
+  const [found] = await getDb().select().from(unit).orderBy(asc(unit.id)).limit(1);
+  if (!found) throw new Error("테스트 DB에 단원이 없다.");
+  return found;
+}
+
+async function newConcepts(count: number) {
+  const { id: unitId } = await firstUnit();
+  const rows = Array.from({ length: count }, (_, index) => ({
+    id: `test-${randomUUID()}`,
+    unitId,
+    title: `테스트 개념 ${index + 1}`,
+  }));
+  createdConceptIds.push(...rows.map(({ id }) => id));
+  await getDb().insert(concept).values(rows);
+  return rows.map(({ id }) => id);
+}
+
+async function loginConsented() {
+  const profile = newProfile();
+  const { headers } = await loginWithGoogle(profile);
+  await getDb().update(learner).set({ consentedAt: new Date() }).where(eq(learner.email, profile.email));
+  const found = await learnerWithEmail(profile.email);
+  if (!found) throw new Error("학습자를 만들지 못했다.");
+  return { headers, learnerId: found.id };
+}
+
+async function pastQuestion(
+  learnerId: string,
+  { summary, keywords = [], conceptIds = [], askedAt = new Date() }: {
+    summary: string;
+    keywords?: string[];
+    conceptIds?: string[];
+    askedAt?: Date;
+  },
+) {
+  const { id: unitId } = await firstUnit();
+  const id = newQuestionId();
+  await getDb().insert(question).values({
+    id,
+    learnerId,
+    unitId,
+    askedAt,
+    studyDay: studyDay(askedAt),
+    appVersion: APP_VERSION,
+    status: "ok",
+    answeredAt: askedAt,
+    summary,
+    keywords,
+    summarizedAt: askedAt,
+  });
+  if (conceptIds.length > 0) {
+    await getDb()
+      .insert(questionConcept)
+      .values(conceptIds.map((conceptId) => ({ questionId: id, conceptId })));
+  }
+}
+
+function ask(body: { questionId: string; unitId: string; content: string }, headers: Headers) {
+  const requestHeaders = new Headers(headers);
+  requestHeaders.set("origin", new URL(env.AUTH_URL).origin);
+  requestHeaders.set("content-type", "application/json");
+  return POST(
+    new Request(new URL("/api/questions", env.AUTH_URL), {
+      method: "POST",
+      headers: requestHeaders,
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+async function events(response: Response) {
+  expect(response.status).toBe(200);
+  return (await response.text())
+    .split("\n\n")
+    .filter((block) => block && !block.startsWith(":"))
+    .map((block) => block.split("\n")[0]?.replace("event: ", ""));
+}
+
+async function afterResponse() {
+  await Promise.all(afterTasks.splice(0));
+}
+
+function questionRow(id: string) {
+  return getDb()
+    .select()
+    .from(question)
+    .where(eq(question.id, id))
+    .then(([row]) => row);
+}
+
+function linkedConcepts(questionId: string) {
+  return getDb()
+    .select({ conceptId: questionConcept.conceptId })
+    .from(questionConcept)
+    .where(eq(questionConcept.questionId, questionId))
+    .then((rows) => rows.map(({ conceptId }) => conceptId));
+}
+
+function sentToAnswerAi() {
+  return JSON.stringify(ai.stream.mock.lastCall);
+}
+
+beforeEach(() => {
+  vi.stubEnv("ANTHROPIC_API_KEY", "test-key");
+  vi.stubEnv("ANTHROPIC_MODEL", "test-model");
+  vi.stubEnv("ANTHROPIC_UTILITY_MODEL", "test-utility-model");
+  vi.stubEnv("VERCEL_GIT_COMMIT_SHA", APP_VERSION);
+  aiAnswers("기본 답");
+  ai.create.mockRejectedValue(new Error("정하지 않은 AI 호출"));
+});
+
+afterEach(async () => {
+  if (vi.isFakeTimers()) await vi.runOnlyPendingTimersAsync();
+  vi.useRealTimers();
+  await Promise.allSettled(afterTasks.splice(0));
+  vi.unstubAllEnvs();
+  ai.stream.mockReset();
+  ai.create.mockReset();
+  const questionIds = createdQuestionIds.splice(0);
+  const conceptIds = createdConceptIds.splice(0);
+  const db = getDb();
+  if (questionIds.length > 0 || conceptIds.length > 0) {
+    await db
+      .delete(questionConcept)
+      .where(
+        or(
+          inArray(questionConcept.questionId, questionIds.length > 0 ? questionIds : [randomUUID()]),
+          inArray(questionConcept.conceptId, conceptIds.length > 0 ? conceptIds : [""]),
+        ),
+      );
+  }
+  if (questionIds.length > 0) {
+    await db.delete(message).where(inArray(message.questionId, questionIds));
+    await db.delete(question).where(inArray(question.id, questionIds));
+  }
+  if (conceptIds.length > 0) await db.delete(concept).where(inArray(concept.id, conceptIds));
+  await deleteCreatedLearners();
+});
+
+describe("질문 개념 분류와 요약", () => {
+  it("TC-61 질문을 보내면 AI가 고른 개념이 질문에 연결돼요", async () => {
+    const { headers } = await loginConsented();
+    const { id: unitId } = await firstUnit();
+    const [x, y, z] = await newConcepts(3);
+    aiClassifies([x!, y!]);
+    const questionId = newQuestionId();
+
+    await events(await ask({ questionId, unitId, content: "개념을 고를 질문" }, headers));
+
+    const linked = await linkedConcepts(questionId);
+    expect(linked.sort()).toEqual([x, y].sort());
+    expect(linked).not.toContain(z);
+  });
+
+  it("TC-62 답을 받은 질문에 요약과 키워드가 채워져요", async () => {
+    const { headers } = await loginConsented();
+    const { id: unitId } = await firstUnit();
+    aiAnswers("GROUP BY 뒤에 ", "HAVING을 써요.");
+    aiClassifies([]);
+    aiSummarizes("HAVING은 그룹에 조건을 거는 절이라고 답했다.", ["HAVING", "group by"]);
+    const questionId = newQuestionId();
+
+    const received = await events(await ask({ questionId, unitId, content: "HAVING은 어디에 써요?" }, headers));
+    await afterResponse();
+
+    expect(received.at(-1)).toBe("done");
+    const saved = await questionRow(questionId);
+    expect(saved?.summary).toBe("HAVING은 그룹에 조건을 거는 절이라고 답했다.");
+    expect(saved?.keywords).toEqual(["having", "group by"]);
+    expect(saved?.summarizedAt).toBeInstanceOf(Date);
+  });
+
+  it("TC-63 같은 개념으로 물었던 내 과거 질문 요약만 답변 AI에게 넘겨요", async () => {
+    const me = await loginConsented();
+    const other = await loginConsented();
+    const { id: unitId } = await firstUnit();
+    const [x, y] = await newConcepts(2);
+    await pastQuestion(me.learnerId, { summary: "과거 요약 A", conceptIds: [x!] });
+    await pastQuestion(other.learnerId, { summary: "과거 요약 B", conceptIds: [x!] });
+    await pastQuestion(me.learnerId, { summary: "과거 요약 C", conceptIds: [y!] });
+    aiClassifies([x!]);
+
+    await events(await ask({ questionId: newQuestionId(), unitId, content: "개념 X 질문" }, me.headers));
+
+    const sent = sentToAnswerAi();
+    expect(sent).toContain("과거 요약 A");
+    expect(sent).not.toContain("과거 요약 B");
+    expect(sent).not.toContain("과거 요약 C");
+  });
+
+  it("TC-64 개념 분류가 실패해도 답을 받고 질문은 ok로 남아요", async () => {
+    const { headers } = await loginConsented();
+    const { id: unitId } = await firstUnit();
+
+    ai.create.mockRejectedValueOnce(new Error("분류 오류"));
+    const failedId = newQuestionId();
+    const failed = await events(await ask({ questionId: failedId, unitId, content: "분류가 실패할 질문" }, headers));
+    await afterResponse();
+    ai.create.mockClear();
+
+    useFakeTimers();
+    ai.create.mockImplementationOnce(
+      (_params: unknown, { signal }: { signal: AbortSignal }) =>
+        new Promise((_, reject) => {
+          signal.addEventListener("abort", () => reject(new Error("요청이 중단됐다.")), { once: true });
+        }),
+    );
+    const slowId = newQuestionId();
+    const slowResponse = ask({ questionId: slowId, unitId, content: "분류가 늦을 질문" }, headers);
+    // 분류를 부르기 전에 원격 DB를 여러 번 오가므로 기본 1초보다 넉넉히 기다린다.
+    await vi.waitFor(() => expect(ai.create).toHaveBeenCalled(), { timeout: 10_000 });
+    await vi.advanceTimersByTimeAsync(10_000);
+    const slow = await events(await slowResponse);
+
+    for (const [received, id] of [
+      [failed, failedId],
+      [slow, slowId],
+    ] as const) {
+      expect(received).toEqual(["delta", "done"]);
+      expect((await questionRow(id))?.status).toBe("ok");
+      expect(await linkedConcepts(id)).toEqual([]);
+    }
+  });
+
+  it("TC-65 요약을 만들지 못해도 답은 ok로 남고 요약은 비어 있어요", async () => {
+    const { headers } = await loginConsented();
+    const { id: unitId } = await firstUnit();
+    aiAnswers("요약되지 않을 답");
+    aiClassifies([]);
+    ai.create.mockRejectedValueOnce(new Error("요약 오류"));
+    const questionId = newQuestionId();
+
+    const received = await events(await ask({ questionId, unitId, content: "요약이 실패할 질문" }, headers));
+    await afterResponse();
+
+    expect(received.at(-1)).toBe("done");
+    const saved = await questionRow(questionId);
+    expect(saved).toMatchObject({ status: "ok", summary: null, keywords: null, summarizedAt: null });
+    const [answer] = await getDb()
+      .select()
+      .from(message)
+      .where(eq(message.questionId, questionId))
+      .orderBy(asc(message.seq))
+      .offset(1);
+    expect(answer).toMatchObject({ seq: 2, role: "assistant", content: "요약되지 않을 답" });
+  });
+
+  it("TC-67 실패한 질문을 다시 보내도 개념 연결이 겹치지 않고 답을 받아요", async () => {
+    const { headers } = await loginConsented();
+    const { id: unitId } = await firstUnit();
+    const [x] = await newConcepts(1);
+    const questionId = newQuestionId();
+    ai.create.mockResolvedValue(jsonReply({ conceptIds: [x], keywords: [] }));
+    aiFails();
+    await events(await ask({ questionId, unitId, content: "다시 보낼 질문" }, headers));
+    expect((await questionRow(questionId))?.status).toBe("error");
+    expect(await linkedConcepts(questionId)).toEqual([x]);
+    aiAnswers("다시 받은 답");
+
+    const received = await events(await ask({ questionId, unitId, content: "다시 보낼 질문" }, headers));
+
+    expect(received.at(-1)).toBe("done");
+    expect((await questionRow(questionId))?.status).toBe("ok");
+    expect(await linkedConcepts(questionId)).toEqual([x]);
+  });
+
+  it("TC-68 과거 질문이 많으면 최근 5개의 요약만 넘겨요", async () => {
+    const { headers, learnerId } = await loginConsented();
+    const { id: unitId } = await firstUnit();
+    const [x] = await newConcepts(1);
+    const now = Date.now();
+    for (let order = 1; order <= 6; order++) {
+      await pastQuestion(learnerId, {
+        summary: `과거 요약 ${order}번째`,
+        conceptIds: [x!],
+        askedAt: new Date(now - (7 - order) * 60_000),
+      });
+    }
+    aiClassifies([x!]);
+
+    await events(await ask({ questionId: newQuestionId(), unitId, content: "개념 X 질문" }, headers));
+
+    const sent = sentToAnswerAi();
+    for (let order = 2; order <= 6; order++) expect(sent).toContain(`과거 요약 ${order}번째`);
+    expect(sent).not.toContain("과거 요약 1번째");
+  });
+
+  it("TC-69 개념 목록에 없는 질문이면 키워드가 겹치는 내 과거 질문 요약을 넘겨요", async () => {
+    const me = await loginConsented();
+    const other = await loginConsented();
+    const { id: unitId } = await firstUnit();
+    await pastQuestion(me.learnerId, { summary: "과거 요약 A", keywords: ["인덱스", "sql"] });
+    await pastQuestion(me.learnerId, { summary: "과거 요약 B", keywords: ["sql"] });
+    await pastQuestion(other.learnerId, { summary: "과거 요약 D", keywords: ["인덱스"] });
+    aiClassifies([], ["인덱스"]);
+
+    await events(await ask({ questionId: newQuestionId(), unitId, content: "인덱스는 왜 빨라요?" }, me.headers));
+
+    const sent = sentToAnswerAi();
+    expect(sent).toContain("과거 요약 A");
+    expect(sent).not.toContain("과거 요약 B");
+    expect(sent).not.toContain("과거 요약 D");
+  });
+});
