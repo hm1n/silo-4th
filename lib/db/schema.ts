@@ -3,6 +3,7 @@ import {
   boolean,
   check,
   date,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -10,6 +11,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -266,6 +268,8 @@ export const recallItem = pgTable(
   },
   (table) => [
     uniqueIndex("recall_items_set_position_idx").on(table.setId, table.position),
+    // quiz_attempts가 (recall_item_id, problem_id)로 참조할 수 있게 둔다.
+    unique("recall_items_id_problem_id_unique").on(table.id, table.problemId),
     check("recall_items_position_check", sql`${table.position} >= 1`),
     check("recall_items_reason_check", sql`${table.reason} in (${oneOf(RECALL_REASONS)})`),
     check(
@@ -287,7 +291,7 @@ export const quizAttempt = pgTable(
     problemId: uuid("problem_id")
       .notNull()
       .references(() => quizProblem.id),
-    recallItemId: uuid("recall_item_id").references(() => recallItem.id),
+    recallItemId: uuid("recall_item_id"),
     studyDay: date("study_day").notNull(),
     chosenIndex: integer("chosen_index"),
     answerText: text("answer_text"),
@@ -306,6 +310,12 @@ export const quizAttempt = pgTable(
     index("quiz_attempts_learner_id_idx").on(table.learnerId),
     index("quiz_attempts_problem_id_idx").on(table.problemId),
     uniqueIndex("quiz_attempts_recall_item_id_idx").on(table.recallItemId),
+    // 꺼내 보기 풀이는 출제 대상이 가리키는 문제와 같은 문제여야 한다. recall_item_id가 비면 검사하지 않는다.
+    foreignKey({
+      name: "quiz_attempts_recall_item_problem_fk",
+      columns: [table.recallItemId, table.problemId],
+      foreignColumns: [recallItem.id, recallItem.problemId],
+    }),
     check("quiz_attempts_confidence_check", sql`${table.confidence} in (${oneOf(CONFIDENCES)})`),
     check("quiz_attempts_grading_check", sql`${table.grading} in (${oneOf(GRADINGS)})`),
     check(

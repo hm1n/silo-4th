@@ -45,6 +45,7 @@ CREATE TABLE "recall_items" (
 	"source_question_id" uuid,
 	"problem_id" uuid NOT NULL,
 	"opened_section_at" timestamp with time zone,
+	CONSTRAINT "recall_items_id_problem_id_unique" UNIQUE("id","problem_id"),
 	CONSTRAINT "recall_items_position_check" CHECK ("recall_items"."position" >= 1),
 	CONSTRAINT "recall_items_reason_check" CHECK ("recall_items"."reason" in ('read_no_question', 'asked', 'quiz')),
 	CONSTRAINT "recall_items_source_question_check" CHECK (("recall_items"."reason" = 'asked') = ("recall_items"."source_question_id" is not null))
@@ -73,7 +74,7 @@ CREATE TABLE "section_views" (
 --> statement-breakpoint
 ALTER TABLE "quiz_attempts" ADD CONSTRAINT "quiz_attempts_learner_id_learners_id_fk" FOREIGN KEY ("learner_id") REFERENCES "public"."learners"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "quiz_attempts" ADD CONSTRAINT "quiz_attempts_problem_id_quiz_problems_id_fk" FOREIGN KEY ("problem_id") REFERENCES "public"."quiz_problems"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "quiz_attempts" ADD CONSTRAINT "quiz_attempts_recall_item_id_recall_items_id_fk" FOREIGN KEY ("recall_item_id") REFERENCES "public"."recall_items"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "quiz_attempts" ADD CONSTRAINT "quiz_attempts_recall_item_problem_fk" FOREIGN KEY ("recall_item_id","problem_id") REFERENCES "public"."recall_items"("id","problem_id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "quiz_problems" ADD CONSTRAINT "quiz_problems_learner_id_learners_id_fk" FOREIGN KEY ("learner_id") REFERENCES "public"."learners"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "quiz_problems" ADD CONSTRAINT "quiz_problems_concept_id_concepts_id_fk" FOREIGN KEY ("concept_id") REFERENCES "public"."concepts"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "quiz_problems" ADD CONSTRAINT "quiz_problems_source_question_id_questions_id_fk" FOREIGN KEY ("source_question_id") REFERENCES "public"."questions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint

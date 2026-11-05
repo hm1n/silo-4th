@@ -1,5 +1,5 @@
 {
-  "id": "9393697b-72c2-4da7-985e-73355b79016f",
+  "id": "e23c3ade-02f0-4a8c-a67f-4b03bf4cd6ed",
   "prevId": "92fd4696-9f94-491f-8de0-c0670e333b7d",
   "version": "7",
   "dialect": "postgresql",
@@ -862,15 +862,17 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "quiz_attempts_recall_item_id_recall_items_id_fk": {
-          "name": "quiz_attempts_recall_item_id_recall_items_id_fk",
+        "quiz_attempts_recall_item_problem_fk": {
+          "name": "quiz_attempts_recall_item_problem_fk",
           "tableFrom": "quiz_attempts",
           "tableTo": "recall_items",
           "columnsFrom": [
-            "recall_item_id"
+            "recall_item_id",
+            "problem_id"
           ],
           "columnsTo": [
-            "id"
+            "id",
+            "problem_id"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
@@ -1175,7 +1177,16 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "recall_items_id_problem_id_unique": {
+          "name": "recall_items_id_problem_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "problem_id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {
         "recall_items_position_check": {
