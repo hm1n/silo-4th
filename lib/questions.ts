@@ -1,13 +1,27 @@
 import "server-only";
 import { captureException } from "@sentry/nextjs";
-import { and, asc, desc, eq, lt, TransactionRollbackError } from "drizzle-orm";
+import {
+  and,
+  arrayOverlaps,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  lt,
+  ne,
+  sql,
+  TransactionRollbackError,
+} from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { safeMessage } from "@/lib/auth/sentry-logger";
 import { getDb } from "@/lib/db";
-import { message, question, questionSession, unit } from "@/lib/db/schema";
+import { concept, message, question, questionConcept, questionSession, unit } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import { streamAnswer } from "@/lib/llm/answer";
+import { classifyQuestion, summarizeQuestion } from "@/lib/llm/tagging";
 import { type SessionSummary, type SessionTurn, toSessionList } from "@/lib/question-sessions";
+import { knownConceptIds, normalizeKeywords } from "@/lib/question-tags";
 import { studyDay } from "@/lib/study-day";
 
 export type AskInput = { questionId: string; sessionId: string; unitId: string; content: string };
@@ -29,6 +43,8 @@ export function reportQuestionError(error: unknown) {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // 질문은 그대로 저장하고 AI에게도 넘기므로, 화면을 거치지 않고 아주 긴 글을 보내지 못하게 막는다.
 const MAX_QUESTION_LENGTH = 4000;
+// 질문이 쌓여도 답변 프롬프트가 길어지지 않게, 과거 요약은 최근 것부터 이만큼만 넘긴다.
+const PAST_SUMMARY_LIMIT = 5;
 
 // 요청 본문은 화면을 거치지 않고도 보낼 수 있어 타입과 달리 아무 값이나 올 수 있다.
 export function parseAskInput(input: unknown): AskInput | undefined {
@@ -124,15 +140,24 @@ function markError(questionId: string) {
 // 다시 시도할 때도 처음 저장한 단원과 질문 원문으로 묻는다.
 // 같은 세션에서 이 질문보다 먼저 묻고 답을 받은 질문과 답을 함께 넘겨, 앞의 대화를 알고 답하게 한다.
 // 이 요청이 가져간 줄이므로, 어디서 실패하든 error로 돌려놓아야 다시 시도할 수 있다. 중간에 받은 답 조각은 저장하지 않는다.
-export async function answerQuestion(questionId: string, onText: (text: string) => void): Promise<"ok" | "error"> {
+// 답을 저장하면 요약에 쓸 수 있게 질문 원문과 답을 함께 돌려준다.
+export async function answerQuestion(
+  questionId: string,
+  onText: (text: string) => void,
+): Promise<{ status: "ok"; question: string; answer: string } | { status: "error" }> {
   const db = getDb();
   try {
     const [asked] = await db
       .select({
+        learnerId: question.learnerId,
         unitContent: unit.content,
         question: message.content,
         sessionId: question.sessionId,
         askedAt: question.askedAt,
+        // 답 앞의 DB 왕복마다 첫 글자가 늦어지므로, 다시 시도할 때 쓸 개념 연결을 이 조회에서 함께 읽는다.
+        linkedConceptIds: sql<
+          string[] | null
+        >`(select array_agg(${questionConcept.conceptId}) from ${questionConcept} where ${questionConcept.questionId} = ${question.id})`,
       })
       .from(message)
       .innerJoin(question, eq(question.id, message.questionId))
@@ -147,25 +172,130 @@ export async function answerQuestion(questionId: string, onText: (text: string) 
         and(eq(question.sessionId, asked.sessionId), eq(question.status, "ok"), lt(question.askedAt, asked.askedAt)),
       )
       .orderBy(asc(question.askedAt), asc(question.id), asc(message.seq));
+    const pastSummaries = await pastSummariesFor({
+      questionId,
+      learnerId: asked.learnerId,
+      sessionId: asked.sessionId,
+      content: asked.question,
+      linkedConceptIds: asked.linkedConceptIds ?? [],
+    });
 
     let reply: string;
     try {
-      reply = await streamAnswer({ unitContent: asked.unitContent, history, question: asked.question }, onText);
+      reply = await streamAnswer(
+        { unitContent: asked.unitContent, history, question: asked.question, pastSummaries },
+        onText,
+      );
     } catch (error) {
       // Anthropic SDK 오류는 보낸 질문을 담지 않는다.
       captureException(error);
       await markError(questionId);
-      return "error";
+      return { status: "error" };
     }
 
     await db.transaction(async (tx) => {
       await tx.insert(message).values({ questionId, seq: 2, role: "assistant", content: reply });
       await tx.update(question).set({ status: "ok", answeredAt: new Date() }).where(eq(question.id, questionId));
     });
-    return "ok";
+    return { status: "ok", question: asked.question, answer: reply };
   } catch (error) {
     await markError(questionId);
     throw error;
+  }
+}
+
+// 분류와 과거 요약은 답을 돕는 일이라, 실패하면 과거 요약 없이 답한다.
+async function pastSummariesFor({
+  questionId,
+  learnerId,
+  sessionId,
+  content,
+  linkedConceptIds,
+}: {
+  questionId: string;
+  learnerId: string;
+  sessionId: string;
+  content: string;
+  linkedConceptIds: string[];
+}) {
+  try {
+    const { conceptIds, keywords } =
+      linkedConceptIds.length > 0
+        ? { conceptIds: linkedConceptIds, keywords: [] }
+        : await tagQuestion(questionId, content);
+    return await findPastSummaries({ learnerId, sessionId, conceptIds, keywords });
+  } catch (error) {
+    reportQuestionError(error);
+    return [];
+  }
+}
+
+// 다시 시도한 질문은 처음 분류한 개념을 그대로 쓰므로, 개념이 연결되지 않은 질문만 분류한다. 시도마다 분류가 달라져 개념이 쌓이지 않게 한다.
+// AI가 뽑은 키워드는 개념이 없을 때 과거 질문을 찾는 데만 쓰고, 저장하는 키워드는 요약에서 뽑는다.
+async function tagQuestion(questionId: string, content: string) {
+  const db = getDb();
+  const concepts = await db.select({ id: concept.id, title: concept.title }).from(concept).orderBy(asc(concept.id));
+  const classified = await classifyQuestion(content, concepts);
+  const conceptIds = knownConceptIds(
+    classified.conceptIds,
+    concepts.map(({ id }) => id),
+  );
+  if (conceptIds.length > 0) {
+    await db
+      .insert(questionConcept)
+      .values(conceptIds.map((conceptId) => ({ questionId, conceptId })))
+      .onConflictDoNothing();
+  }
+  return { conceptIds, keywords: normalizeKeywords(classified.keywords) };
+}
+
+// 지금 대화의 질문은 앞 대화 원문으로 이미 넘기므로 과거 요약에서 뺀다. 지금 질문도 이 조건으로 함께 빠진다.
+async function findPastSummaries({
+  learnerId,
+  sessionId,
+  conceptIds,
+  keywords,
+}: {
+  learnerId: string;
+  sessionId: string;
+  conceptIds: string[];
+  keywords: string[];
+}) {
+  const db = getDb();
+  const sameTopic =
+    conceptIds.length > 0
+      ? inArray(
+          question.id,
+          db
+            .select({ id: questionConcept.questionId })
+            .from(questionConcept)
+            .where(inArray(questionConcept.conceptId, conceptIds)),
+        )
+      : keywords.length > 0
+        ? arrayOverlaps(question.keywords, keywords)
+        : undefined;
+  if (!sameTopic) return [];
+
+  const rows = await db
+    .select({ summary: question.summary })
+    .from(question)
+    .where(and(eq(question.learnerId, learnerId), ne(question.sessionId, sessionId), isNotNull(question.summary), sameTopic))
+    .orderBy(desc(question.askedAt))
+    .limit(PAST_SUMMARY_LIMIT);
+  // 오래된 질문부터 읽히게 순서를 뒤집는다.
+  return rows.flatMap(({ summary }) => (summary ? [summary] : [])).reverse();
+}
+
+// 답을 보낸 뒤에 부른다. 요약은 다음 질문에서만 쓰므로, 실패하면 요약 칸을 비워 두고 질문은 ok로 둔다.
+export async function summarizeAnswer(questionId: string, content: string, answer: string) {
+  try {
+    const { summary, keywords } = await summarizeQuestion(content, answer);
+    await getDb()
+      .update(question)
+      .set({ summary, keywords: normalizeKeywords(keywords), summarizedAt: new Date() })
+      .where(eq(question.id, questionId));
+  } catch (error) {
+    reportQuestionError(error);
   }
 }
 

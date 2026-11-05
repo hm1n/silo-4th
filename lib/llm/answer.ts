@@ -1,21 +1,25 @@
 import "server-only";
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
 import { env } from "@/lib/env";
+import { anthropic } from "./client";
 
 // Vercel Hobby는 함수를 300초에 끊는다. 끊기면 질문이 pending에 남으므로, 재시도까지 합쳐 그 전에 끝내고 error로 남긴다.
 const ANSWER_DEADLINE_MS = 240_000;
 // 학습자가 답이 시작되기를 마냥 기다리지 않게, 첫 글자가 늦으면 실패로 끝내고 다시 시도하게 한다.
 const FIRST_TEXT_TIMEOUT_MS = 60_000;
 
-let client: Anthropic | undefined;
-
 // 학습자가 읽고 있던 단원 본문과 같은 대화의 앞 질문과 답을 함께 넘겨, 그 내용을 알고 답하게 한다.
+// 같은 내용으로 물었던 과거 질문의 요약이 있으면 함께 넘겨, 앞서 받은 답과 이어지게 한다.
 // 답 글이 생기는 대로 onText로 넘기고, 끝까지 받은 답 전체를 돌려준다. 답을 끝까지 받지 못하면 예외를 던진다.
 export async function streamAnswer(
-  { unitContent, history, question }: { unitContent: string; history: Anthropic.MessageParam[]; question: string },
+  {
+    unitContent,
+    history,
+    question,
+    pastSummaries,
+  }: { unitContent: string; history: Anthropic.MessageParam[]; question: string; pastSummaries: string[] },
   onText: (text: string) => void,
 ) {
-  client ??= new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
   const abort = new AbortController();
   const firstText = setTimeout(
     () => abort.abort(new Error(`AI가 ${FIRST_TEXT_TIMEOUT_MS / 1000}초 안에 답을 시작하지 않았다.`)),
@@ -26,7 +30,7 @@ export async function streamAnswer(
     ANSWER_DEADLINE_MS,
   );
   try {
-    const stream = client.messages.stream(
+    const stream = anthropic().messages.stream(
       {
         model: env.ANTHROPIC_MODEL,
         max_tokens: 16000,
@@ -35,6 +39,8 @@ export async function streamAnswer(
         system: [
           { type: "text", text: "학습자가 아래 단원을 읽다가 질문했다. 단원 내용을 바탕으로 한국어로 답한다." },
           { type: "text", text: `<unit>\n${unitContent}\n</unit>`, cache_control: { type: "ephemeral" } },
+          // 질문마다 달라지므로 단원 본문의 캐시 지점 뒤에 둔다.
+          ...(pastSummaries.length > 0 ? [{ type: "text" as const, text: pastQuestionsBlock(pastSummaries) }] : []),
         ],
         messages: [...history, { role: "user", content: question }],
       },
@@ -61,4 +67,9 @@ export async function streamAnswer(
     clearTimeout(firstText);
     clearTimeout(deadline);
   }
+}
+
+function pastQuestionsBlock(summaries: string[]) {
+  const items = summaries.map((summary) => `- ${summary}`).join("\n");
+  return `학습자가 전에 비슷한 내용으로 물었던 질문의 요약이다. 이어지는 질문이면 참고해 답한다.\n<past_questions>\n${items}\n</past_questions>`;
 }

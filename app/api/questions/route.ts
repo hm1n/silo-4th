@@ -1,7 +1,14 @@
 import { after } from "next/server";
 import { findLearner } from "@/lib/auth";
 import { env } from "@/lib/env";
-import { answerQuestion, type Claim, claimQuestion, parseAskInput, reportQuestionError } from "@/lib/questions";
+import {
+  answerQuestion,
+  type Claim,
+  claimQuestion,
+  parseAskInput,
+  reportQuestionError,
+  summarizeAnswer,
+} from "@/lib/questions";
 
 // Vercel Hobby에서 함수가 쓸 수 있는 최대 시간이다. 연결이 끊긴 뒤에도 이 안에서 답을 끝까지 받아 저장한다.
 export const maxDuration = 300;
@@ -45,7 +52,9 @@ export async function POST(request: Request) {
       return eventStream(async (send) => {
         try {
           const result = await answerQuestion(input.questionId, (text) => send("delta", { text }));
-          send(result === "ok" ? "done" : "error");
+          send(result.status === "ok" ? "done" : "error");
+          // 요약은 다음 질문에서만 쓰므로 기다리지 않고 응답을 닫는다. 이 작업도 after 안이라 요약은 따로 after에 맡긴다.
+          if (result.status === "ok") after(summarizeAnswer(input.questionId, result.question, result.answer));
         } catch (error) {
           reportQuestionError(error);
           send("error");
