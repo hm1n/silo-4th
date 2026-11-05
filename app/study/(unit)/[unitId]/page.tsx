@@ -4,7 +4,9 @@ import { Suspense } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { requireLearner } from "@/lib/auth";
+import { remarkSectionIds, unitSections } from "@/lib/unit-sections";
 import { findUnit, listUnits } from "@/lib/units";
+import { ScrollToSection } from "../_components/scroll-to-section";
 
 type Params = PageProps<"/study/[unitId]">["params"];
 
@@ -22,6 +24,7 @@ async function StudyUnit({ params }: { params: Params }) {
   const { unitId } = await params;
   const [units, current] = await Promise.all([listUnits(), findUnit(unitId)]);
   if (!current) notFound();
+  const sections = unitSections(current.content);
 
   return (
     <>
@@ -36,6 +39,19 @@ async function StudyUnit({ params }: { params: Params }) {
               >
                 {title}
               </Link>
+              {id === current.id && sections.length > 0 && (
+                <nav aria-label="목차">
+                  <ul className="mt-1 ml-3 space-y-1 text-sm">
+                    {sections.map(({ key, title: sectionTitle }) => (
+                      <li key={key}>
+                        <a href={`#${key}`} className="block rounded px-2 py-1">
+                          {sectionTitle}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </nav>
+              )}
             </li>
           ))}
         </ul>
@@ -44,7 +60,8 @@ async function StudyUnit({ params }: { params: Params }) {
         </button>
       </nav>
       <article className="unit-body min-w-0 flex-1 overflow-y-auto p-8">
-        <Markdown remarkPlugins={[remarkGfm]}>{current.content}</Markdown>
+        <Markdown remarkPlugins={[remarkGfm, remarkSectionIds]}>{current.content}</Markdown>
+        <ScrollToSection />
       </article>
     </>
   );
