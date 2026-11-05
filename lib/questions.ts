@@ -175,6 +175,7 @@ export async function answerQuestion(
     const pastSummaries = await pastSummariesFor({
       questionId,
       learnerId: asked.learnerId,
+      sessionId: asked.sessionId,
       content: asked.question,
       linkedConceptIds: asked.linkedConceptIds ?? [],
     });
@@ -207,11 +208,13 @@ export async function answerQuestion(
 async function pastSummariesFor({
   questionId,
   learnerId,
+  sessionId,
   content,
   linkedConceptIds,
 }: {
   questionId: string;
   learnerId: string;
+  sessionId: string;
   content: string;
   linkedConceptIds: string[];
 }) {
@@ -220,7 +223,7 @@ async function pastSummariesFor({
       linkedConceptIds.length > 0
         ? { conceptIds: linkedConceptIds, keywords: [] }
         : await tagQuestion(questionId, content);
-    return await findPastSummaries({ questionId, learnerId, conceptIds, keywords });
+    return await findPastSummaries({ learnerId, sessionId, conceptIds, keywords });
   } catch (error) {
     reportQuestionError(error);
     return [];
@@ -246,14 +249,15 @@ async function tagQuestion(questionId: string, content: string) {
   return { conceptIds, keywords: normalizeKeywords(classified.keywords) };
 }
 
+// 지금 대화의 질문은 앞 대화 원문으로 이미 넘기므로 과거 요약에서 뺀다. 지금 질문도 이 조건으로 함께 빠진다.
 async function findPastSummaries({
-  questionId,
   learnerId,
+  sessionId,
   conceptIds,
   keywords,
 }: {
-  questionId: string;
   learnerId: string;
+  sessionId: string;
   conceptIds: string[];
   keywords: string[];
 }) {
@@ -275,7 +279,7 @@ async function findPastSummaries({
   const rows = await db
     .select({ summary: question.summary })
     .from(question)
-    .where(and(eq(question.learnerId, learnerId), ne(question.id, questionId), isNotNull(question.summary), sameTopic))
+    .where(and(eq(question.learnerId, learnerId), ne(question.sessionId, sessionId), isNotNull(question.summary), sameTopic))
     .orderBy(desc(question.askedAt))
     .limit(PAST_SUMMARY_LIMIT);
   // 오래된 질문부터 읽히게 순서를 뒤집는다.
