@@ -32,7 +32,8 @@
 | 단위 테스트는 `*.test.ts`, 통합 테스트는 `*.integration.test.ts`, E2E는 `e2e/*.spec.ts`로 이름을 짓는다. 실행은 `npm test`, `npm run test:integration`, `npm run test:e2e`로 나눈다 | `vitest.config.ts` `projects`, `playwright.config.ts` | [0006](adr/0006-test-strategy.md) |
 | 통합 테스트와 E2E는 Neon `test` 브랜치에만 연결한다. 주소와 키는 `.env.test.local`에 두고, 통합 테스트 프로젝트와 E2E 설정만 이 파일을 읽는다. 파일이 없으면 E2E는 실행 전에 실패한다 | `vitest.config.ts` `integration` 프로젝트의 `env`, `playwright.config.ts` | [0006](adr/0006-test-strategy.md) |
 | E2E 로그인은 테스트 코드가 테스트 DB에 학습자와 세션을 만들고 서명한 세션 쿠키를 넣어 처리한다. 앱 코드에는 테스트용 로그인 우회 장치를 두지 않는다 | `e2e/fixtures.ts`, 코드 리뷰 | [0006](adr/0006-test-strategy.md) |
-| AI 모델 ID를 코드에 쓰지 않고 `lib/env.ts`의 `env.ANTHROPIC_MODEL`과 `env.ANTHROPIC_UTILITY_MODEL`로만 읽는다. 질문 답변은 `ANTHROPIC_MODEL`, 질문 개념 분류와 요약은 `ANTHROPIC_UTILITY_MODEL`을 쓴다. 운영 모델은 Vercel 환경 변수로 정한다 | `lib/env.ts`, `lib/llm/`, 루트 `CLAUDE.md`, 코드 리뷰 (기계 검사 없음) | [0007](adr/0007-ai-model.md), [0008](adr/0008-question-concept-summary.md) |
+| AI 모델 ID를 코드에 쓰지 않고 `lib/env.ts`의 `env.ANTHROPIC_MODEL`과 `env.ANTHROPIC_UTILITY_MODEL`로만 읽는다. 질문 답변과 퀴즈 생성은 `ANTHROPIC_MODEL`, 질문 개념 분류와 요약, 서술형 퀴즈 채점은 `ANTHROPIC_UTILITY_MODEL`을 쓴다. 운영 모델은 Vercel 환경 변수로 정한다 | `lib/env.ts`, `lib/llm/`, 루트 `CLAUDE.md`, 코드 리뷰 (기계 검사 없음) | [0007](adr/0007-ai-model.md), [0008](adr/0008-question-concept-summary.md), [0010](adr/0010-quiz-free-grading.md) |
+| 퀴즈 채점은 풀이 저장 API가 서버에서 하고, 화면이 보낸 채점 결과는 쓰지 않는다. 서술형 AI 채점이 실패하면 채점 결과를 비운 채 풀이를 저장한다. 같은 풀이 ID가 다시 오면 다시 채점하지 않고 처음 결과를 돌려준다 | `lib/quiz-attempts.ts`, 노션 TC-103~114 | [0010](adr/0010-quiz-free-grading.md) |
 | AI가 고른 개념 ID는 `concepts`에 있는 것만 남기고, 키워드는 소문자로 맞춰 공백과 중복을 없앤 뒤 저장하거나 검색에 쓴다. 분류와 요약이 실패해도 질문의 답은 막지 않는다 | 질문 개념 분류와 요약 코드, 노션 TC-64~66, TC-70 | [0008](adr/0008-question-concept-summary.md) |
 | DB는 `lib/db`의 `getDb()`로만 접근하고, 테이블은 `lib/db/schema.ts`에만 정의한다. 이 모듈을 클라이언트 컴포넌트에서 import하면 빌드가 실패한다 | `lib/db/index.ts` (`server-only`) | [0003](adr/0003-neon-postgres-drizzle.md) |
 | DB 마이그레이션은 Vercel 배포 빌드에서 자동으로 적용한다. 프리뷰는 `preview/<브랜치>`, 운영은 `production` 브랜치에 들어간다. 운영 DB에 손으로 돌리지 않고, 배포와 연결되지 않은 `test`, `vercel-dev`만 손으로 적용한다 | `vercel.json` `buildCommand`, `drizzle.config.ts` | [0009](adr/0009-migrate-on-deploy.md) |
@@ -51,6 +52,7 @@
 | [0007](adr/0007-ai-model.md) | 질문 답변 AI 모델은 Claude Sonnet 5.5를 effort low로 쓴다 | 확정 |
 | [0008](adr/0008-question-concept-summary.md) | 질문 개념 분류와 요약은 Haiku 5.5로 따로 부르고, 실패해도 답을 막지 않는다 | 확정 |
 | [0009](adr/0009-migrate-on-deploy.md) | DB 마이그레이션은 Vercel 배포 빌드에서 자동으로 적용한다 | 확정 |
+| [0010](adr/0010-quiz-free-grading.md) | 서술형 퀴즈 채점은 Haiku 5.5로 서버에서 하고, 실패하면 채점 없이 저장한다 | 확정 |
 
 ## 아직 도입하지 않은 규칙
 

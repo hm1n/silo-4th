@@ -14,7 +14,7 @@ export const env = {
   get ANTHROPIC_MODEL() {
     return required("ANTHROPIC_MODEL");
   },
-  // 질문 개념 분류와 요약에 쓰는 모델이다. 근거는 _docs/wiki/adr/0008-question-concept-summary.md다.
+  // 질문 개념 분류와 요약, 서술형 퀴즈 채점에 쓰는 모델이다. 근거는 _docs/wiki/adr/0008-question-concept-summary.md와 0010-quiz-free-grading.md다.
   get ANTHROPIC_UTILITY_MODEL() {
     return required("ANTHROPIC_UTILITY_MODEL");
   },
