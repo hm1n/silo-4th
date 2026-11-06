@@ -1,6 +1,5 @@
 import "server-only";
-import { env } from "@/lib/env";
-import { anthropic } from "./client";
+import { askJson } from "./ask-json";
 
 // 분류는 모든 질문의 첫 글자를 늦추므로 짧게 끊고, 실패하면 과거 요약 없이 답한다.
 const CLASSIFY_TIMEOUT_MS = 10_000;
@@ -39,63 +38,6 @@ export async function summarizeQuestion(question: string, answer: string): Promi
   });
   if (typeof reply.summary !== "string" || !reply.summary.trim()) throw new Error("AI 요약이 비어 있다.");
   return { summary: reply.summary.trim(), keywords: strings(reply.keywords) };
-}
-
-async function askJson({
-  system,
-  content,
-  properties,
-  timeoutMs,
-}: {
-  system: string;
-  content: string;
-  properties: Record<string, object>;
-  timeoutMs: number;
-}): Promise<Record<string, unknown>> {
-  const abort = new AbortController();
-  const timer = setTimeout(
-    () => abort.abort(new Error(`AI가 ${timeoutMs / 1000}초 안에 답하지 않았다.`)),
-    timeoutMs,
-  );
-  try {
-    const response = await anthropic().messages.create(
-      {
-        model: env.ANTHROPIC_UTILITY_MODEL,
-        max_tokens: 4000,
-        output_config: {
-          effort: "low",
-          format: {
-            type: "json_schema",
-            schema: { type: "object", properties, required: Object.keys(properties), additionalProperties: false },
-          },
-        },
-        system,
-        messages: [{ role: "user", content }],
-      },
-      { signal: abort.signal },
-    );
-    if (response.stop_reason !== "end_turn") throw new Error(`AI 응답이 ${response.stop_reason}로 끝났다.`);
-    const text = response.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("");
-    return parseObject(text);
-  } catch (error) {
-    throw abort.signal.aborted ? abort.signal.reason : error;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-// JSON.parse 오류 메시지는 입력 일부를 담아, 질문 원문이 Sentry로 가지 않게 메시지를 바꾼다.
-function parseObject(text: string): Record<string, unknown> {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    throw new Error("AI 응답이 JSON이 아니다.");
-  }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw new Error("AI 응답이 JSON 객체가 아니다.");
-  }
-  return parsed as Record<string, unknown>;
 }
 
 function strings(value: unknown): string[] {
