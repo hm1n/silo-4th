@@ -15,6 +15,7 @@ import {
   gradeChoice,
   toGradable,
 } from "@/lib/quiz-grading";
+import { MAX_ANSWER_LENGTH } from "@/lib/quiz-flow";
 import { studyDay } from "@/lib/study-day";
 
 type Confidence = (typeof CONFIDENCES)[number];
@@ -42,8 +43,6 @@ export type Submission =
   | { kind: "not-yours" };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-// 서술형 설명은 채점 AI에게도 넘기므로, 화면을 거치지 않고 아주 긴 글을 보내지 못하게 막는다.
-const MAX_ANSWER_LENGTH = 4000;
 
 // 학습자의 답은 쿼리 값으로 오류 메시지에 담긴다. 값을 지운 메시지만 Sentry로 보낸다.
 export function reportQuizError(error: unknown) {
