@@ -1,4 +1,5 @@
 import "server-only";
+import { env } from "@/lib/env";
 import { askJson } from "./ask-json";
 
 // 분류는 모든 질문의 첫 글자를 늦추므로 짧게 끊고, 실패하면 과거 요약 없이 답한다.
@@ -18,6 +19,7 @@ export async function classifyQuestion(
   concepts: readonly { id: string; title: string }[],
 ): Promise<Classification> {
   const reply = await askJson({
+    model: env.ANTHROPIC_UTILITY_MODEL,
     system:
       "학습자의 질문이 아래 개념 목록의 어느 개념에 대한 질문인지 고른다. 해당하는 개념이 없으면 conceptIds를 비운다. keywords에는 질문의 핵심 용어를 1~5개 넣는다.",
     content: `<concepts>\n${concepts.map(({ id, title }) => `${id}: ${title}`).join("\n")}\n</concepts>\n\n<question>\n${question}\n</question>`,
@@ -30,6 +32,7 @@ export async function classifyQuestion(
 // 다음 질문의 답변 프롬프트에 원문 대신 넣을 요약을 만든다.
 export async function summarizeQuestion(question: string, answer: string): Promise<Summary> {
   const reply = await askJson({
+    model: env.ANTHROPIC_UTILITY_MODEL,
     system:
       "학습자의 질문과 AI의 답을 읽고, 학습자가 무엇을 물었고 어떤 답을 받았는지 한국어 2~3문장, 300자 이내로 요약한다. keywords에는 핵심 용어를 1~5개 넣는다.",
     content: `<question>\n${question}\n</question>\n\n<answer>\n${answer}\n</answer>`,

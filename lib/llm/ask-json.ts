@@ -1,14 +1,15 @@
 import "server-only";
-import { env } from "@/lib/env";
 import { anthropic } from "./client";
 
-// 유틸리티 모델에 JSON 스키마로 답을 받는다. 제한 시간이 지나면 요청을 끊고 시간 초과 오류를 던진다.
+// JSON 스키마로 답을 받는다. 제한 시간이 지나면 요청을 끊고 시간 초과 오류를 던진다.
 export async function askJson({
+  model,
   system,
   content,
   properties,
   timeoutMs,
 }: {
+  model: string;
   system: string;
   content: string;
   properties: Record<string, object>;
@@ -22,7 +23,7 @@ export async function askJson({
   try {
     const response = await anthropic().messages.create(
       {
-        model: env.ANTHROPIC_UTILITY_MODEL,
+        model,
         max_tokens: 4000,
         output_config: {
           effort: "low",
