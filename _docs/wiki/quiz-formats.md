@@ -77,12 +77,8 @@
 - 4-87 PR 1에서 `code`를 쓰지 않게 하고 예제 코드를 `stem`에 넣기로 했다. 근거는 4-87 PR 나누기 결정과 TC-128이다. 2026-11-07 개발자가 정했다.
 - 서술형 `partial` 판정과 근거를 없애고 `is_correct` 하나로 맞췄다. 잘 모르겠어요는 확신도 `guess`의 틀림으로 남긴다. 근거는 TC-104, TC-105, [ADR 0010](adr/0010-quiz-free-grading.md) 2026-11-07 수정이다.
 - 객관식 보기의 `misconception` 필드를 없앴다. 화면, 채점, 지표 어디에서도 읽지 않았고, 4-64 착각 비율도 `is_correct`와 `confidence`로 계산한다. 2026-11-07 개발자가 정했다.
-
-## 제안
-
-- DB에 남은 `quiz_problems.code`, `quiz_attempts.dont_know`, `grading`, `grading_reason`은 4-87 PR 1이 배포된 뒤 마이그레이션 PR에서 지운다. 같은 PR에서 기존 `partial`을 틀림으로 옮기고 `confidence`를 필수로 바꾼다. 근거는 ADR 0009 결정 7이다.
+- 마이그레이션 `0006_quiz_grading_cleanup`에서 `quiz_problems.code`, `quiz_attempts.dont_know`, `grading`, `grading_reason`을 지우고 `confidence`를 필수로 바꿨다. 지우기 전에 `grading`이 `correct`인 풀이는 `is_correct` true로, `partial`과 `wrong`은 false로 옮겼다. `dont_know` 풀이는 확신도 `guess`, `is_correct` false로 옮겼다. `code`가 있던 문제는 `stem` 끝에 코드 블록으로 붙였다. 4-87 PR 1을 먼저 배포한 것은 ADR 0009 결정 7을 따른 것이다.
 
 ## 확인 필요
 
-- TC-112는 아직 초안이다.
 - [퀴즈 스키마 초안](../output/2026-11-05-quiz-schema.md)의 `answer` 표에는 `misconception`이 남아 있다. output 문서는 고치지 않는 규칙이라 그대로 두었다.
