@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { AttemptResult } from "./quiz-attempts";
-import { type QuizFlow, type QuizFlowEvent, advanceQuizFlow, canSubmit, startQuizFlow } from "./quiz-flow";
+import {
+  MAX_ANSWER_LENGTH,
+  type QuizFlow,
+  type QuizFlowEvent,
+  advanceQuizFlow,
+  canSubmit,
+  startQuizFlow,
+} from "./quiz-flow";
 
 const mcq = { id: "11111111-1111-4111-8111-111111111111", format: "mcq" as const, choices: ["가", "나", "다", "라"] };
 const blank = { id: "22222222-2222-4222-8222-222222222222", format: "blank" as const };
@@ -160,5 +167,23 @@ describe("퀴즈 풀이 흐름", () => {
     expect(explained.result).toEqual(result);
     expect(explained.result).not.toHaveProperty("isCorrect");
     expect(explained.submitted.answerText).toBe("상태가 바뀌면 다시 그려요");
+  });
+
+  it("TC-148 빈칸과 서술형 답이 4000자를 넘으면 넘친 글만 자르고, 이모지는 반만 남기지 않아요", () => {
+    const written = (text: string) => {
+      const flow = run(startQuizFlow(free), { type: "write", text });
+      if (flow.stage !== "problem") throw new Error(`문제 단계가 아니라 ${flow.stage} 단계예요.`);
+      return flow;
+    };
+    const exact = "a".repeat(MAX_ANSWER_LENGTH);
+    const before = "a".repeat(MAX_ANSWER_LENGTH - 1);
+
+    expect(written(exact).text).toBe(exact);
+    expect(written(`${exact}b`).text).toBe(exact);
+
+    const straddled = written(`${before}😀`);
+    expect(straddled.text).toBe(before);
+    expect(straddled.text.isWellFormed()).toBe(true);
+    expect(canSubmit(straddled)).toBe(true);
   });
 });
