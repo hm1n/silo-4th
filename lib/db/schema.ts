@@ -278,8 +278,6 @@ export const recallItem = pgTable(
 );
 
 // recall_item_id가 비어 있으면 퀴즈 탭에서 푼 기록이다.
-// DB에 남은 dont_know, grading, grading_reason과 quiz_problems.code는 코드에서 빼 두었다.
-// 이전 코드가 새 스키마에서도 돌도록, 이 코드가 배포된 뒤 다음 마이그레이션에서 지운다. 근거는 ADR 0009 결정 7이다.
 export const quizAttempt = pgTable(
   "quiz_attempts",
   {
@@ -296,7 +294,7 @@ export const quizAttempt = pgTable(
     chosenIndex: integer("chosen_index"),
     answerText: text("answer_text"),
     reasonText: text("reason_text"),
-    confidence: text("confidence", { enum: CONFIDENCES }),
+    confidence: text("confidence", { enum: CONFIDENCES }).notNull(),
     hintUsed: boolean("hint_used").default(false).notNull(),
     // 서술형 AI 채점이 실패했을 때만 비어 있다.
     isCorrect: boolean("is_correct"),
