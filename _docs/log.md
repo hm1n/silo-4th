@@ -74,3 +74,6 @@
 | 2026-11-05 | ADR `0009-migrate-on-deploy.md`를 만들고 `wiki/dev-rules.md`에 반영했다 | 운영과 개발 DB가 `0002`에서 멈춘 것을 계기로 배포 빌드에서 마이그레이션을 자동 적용하기로 했다. 푸시한 마이그레이션을 다시 만들지 않는 규칙과 충돌을 다시 생성으로 푸는 규칙을 더했다 | 프리뷰 빌드 단계에 DB 주소가 들어오는지, Vercel 대시보드 Build Command 덮어쓰기 여부 확인 필요 |
 | 2026-11-05 | ADR `0009-migrate-on-deploy.md`의 빌드 명령 순서와 결과를 고쳤다 | PR #16 CodeRabbit 리뷰를 받아 `next build`가 성공한 뒤에 마이그레이션을 적용하도록 바꿨다. 빌드가 실패해도 DB가 앞서 나가지 않는다. `0003`을 나누는 안은 결정 5에 어긋나 받지 않았다 | 운영 배포 직후 몇 초 동안 이전 코드의 질문 저장 실패 가능 |
 | 2026-11-06 | ADR `0010-quiz-free-grading.md`를 만들고 `wiki/dev-rules.md`와 루트 `CLAUDE.md`에 반영했다 | 4-88에서 서술형 퀴즈 채점을 Haiku 5.5로 서버에서 하고, 10초 안에 끝나지 않거나 실패하면 채점 없이 저장하기로 했다. 퀴즈 생성 모델은 4-87 몫이라 규칙 문구만 더했다 | 10초 제한은 추정이라 운영 응답 시간을 재서 조정 필요 |
+| 2026-11-07 | `wiki/quiz-formats.md`를 만들었다 | 객관식, 빈칸, 서술형의 공통 항목과 정답 구조, 풀이 입력을 표로 정리하고 4-87 PR 1에서 바꿀 내용을 제안으로 적었다 | TC-128 `keyPoints` 검사 기준 확인 필요 |
+| 2026-11-07 | `wiki/quiz-formats.md`에서 객관식 `misconception`을 빼고 `keyPoints` 검사 기준을 더했다 | `misconception`은 쓰는 곳이 없어 타입과 TC-103에서 뺐다. TC-128에 `keyPoints` 통과, 실패 조건을 넣었다 | `output/2026-11-05-quiz-schema.md`에 `misconception`이 남아 있음 |
+| 2026-11-07 | ADR `0010-quiz-free-grading.md` 결정 3, 4, 5와 `wiki/dev-rules.md`, `wiki/quiz-formats.md`를 고쳤다 | 4-87 PR 1에서 서술형 판정을 맞음과 틀림으로 줄여 `is_correct`에 남기고, 잘 모르겠어요를 확신도 `guess`의 틀림으로 남기게 했다. 지울 컬럼은 코드에서만 뺐다 | 컬럼 삭제와 `partial` 데이터 옮기기는 마이그레이션 PR에서 해야 함 |
