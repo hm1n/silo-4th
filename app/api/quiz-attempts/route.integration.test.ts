@@ -24,10 +24,10 @@ const createdConceptIds: string[] = [];
 
 const CHOICE_ANSWER: QuizAnswer = {
   choices: [
-    { text: "렌더링마다 새로 만든다", misconception: "상태가 매번 초기화된다고 생각했어요" },
-    { text: "부모가 넘겨준다", misconception: "props와 헷갈렸어요" },
+    { text: "렌더링마다 새로 만든다" },
+    { text: "부모가 넘겨준다" },
     { text: "React가 컴포넌트 밖에 보관한다" },
-    { text: "전역 변수에 둔다", misconception: "전역 상태와 헷갈렸어요" },
+    { text: "전역 변수에 둔다" },
   ],
   answerIndex: 2,
 };
@@ -41,8 +41,8 @@ function jsonReply(value: object) {
   return { stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(value) }] };
 }
 
-function aiGrades(grading: string, reason: string) {
-  ai.create.mockResolvedValueOnce(jsonReply({ grading, reason }));
+function aiGrades(grading: "correct" | "wrong") {
+  ai.create.mockResolvedValueOnce(jsonReply({ grading }));
 }
 
 function useFakeTimers() {
@@ -197,14 +197,14 @@ describe("퀴즈 풀이 저장과 채점", () => {
       isCorrect: false,
     });
     for (const row of [choiceRow, blankRow]) {
-      expect(row).toMatchObject({ dontKnow: false, reasonText: null, grading: null, recallItemId: null, appVersion: APP_VERSION });
+      expect(row).toMatchObject({ reasonText: null, recallItemId: null, appVersion: APP_VERSION });
       expect(row.studyDay).toBe(studyDay(row.answeredAt));
     }
     expect(choiceResult).toMatchObject({ isCorrect: true, answer: choice.answer, explanation: choice.explanation });
     expect(blankResult).toMatchObject({ isCorrect: false, answer: blank.answer, explanation: blank.explanation });
   });
 
-  it("TC-104 서술형에서 잘 모르겠어요로 넘긴 풀이는 AI 채점 없이 저장되고, 응답은 저장 확인만 담아요", async () => {
+  it("TC-104 서술형에서 잘 모르겠어요로 넘긴 풀이는 AI 채점 없이 찍었어요와 틀림으로 저장되고, 응답에 정답과 해설이 와요", async () => {
     const { headers } = await loginConsented();
     const free = await newProblem("free");
     const partialId = newAttemptId();
@@ -217,15 +217,11 @@ describe("퀴즈 풀이 저장과 채점", () => {
       await submit({ attemptId: blankId, problemId: free.id, answerText: "   ", hintUsed: false, dontKnow: true }, { headers }),
     ];
 
-    for (const response of responses) expect(await result(response)).toMatchObject({ outcome: "skipped" });
+    for (const response of responses) {
+      expect(await result(response)).toMatchObject({ isCorrect: false, answer: free.answer, explanation: free.explanation });
+    }
     for (const id of [partialId, emptyId, blankId]) {
-      expect(await attemptRow(id)).toMatchObject({
-        dontKnow: true,
-        confidence: null,
-        isCorrect: null,
-        grading: null,
-        gradingReason: null,
-      });
+      expect(await attemptRow(id)).toMatchObject({ confidence: "guess", isCorrect: false });
     }
     expect((await attemptRow(partialId)).answerText).toBe("상태가 바뀌면");
     expect((await attemptRow(emptyId)).answerText).toBeNull();
@@ -233,12 +229,12 @@ describe("퀴즈 풀이 저장과 채점", () => {
     expect(ai.create).not.toHaveBeenCalled();
   });
 
-  it("TC-105 서술형 풀이는 AI 채점 결과를 남기고, 응답에 채점 결과와 정답, 해설이 와요", async () => {
+  it("TC-105 서술형 풀이는 AI가 맞음과 틀림으로 채점하고, 응답에 채점 결과와 정답, 해설이 와요", async () => {
     const { headers } = await loginConsented();
     const free = await newProblem("free");
     const attemptId = newAttemptId();
     const explained = "값이 바뀌면 컴포넌트를 다시 그려요";
-    aiGrades("partial", "다시 렌더링은 짚었지만 상태 변경이 계기라는 점이 빠졌어요");
+    aiGrades("correct");
 
     const body = await result(
       await submit(
@@ -250,21 +246,14 @@ describe("퀴즈 풀이 저장과 채점", () => {
     expect(await attemptRow(attemptId)).toMatchObject({
       answerText: explained,
       confidence: "unsure",
-      grading: "partial",
-      gradingReason: "다시 렌더링은 짚었지만 상태 변경이 계기라는 점이 빠졌어요",
-      isCorrect: null,
+      isCorrect: true,
       reasonText: null,
     });
-    expect(body).toMatchObject({
-      grading: "partial",
-      gradingReason: "다시 렌더링은 짚었지만 상태 변경이 계기라는 점이 빠졌어요",
-      answer: free.answer,
-      explanation: free.explanation,
-    });
+    expect(body).toEqual({ outcome: "graded", isCorrect: true, answer: free.answer, explanation: free.explanation });
     const sent = sentToGradingAi();
-    expect(sent).toContain(FREE_ANSWER.modelAnswer);
-    for (const point of FREE_ANSWER.keyPoints) expect(sent).toContain(point);
-    expect(sent).toContain(explained);
+    for (const part of [free.stem, FREE_ANSWER.modelAnswer, ...FREE_ANSWER.keyPoints, free.hint, free.explanation, explained]) {
+      expect(sent).toContain(part);
+    }
   });
 
   it("TC-106 같은 풀이 ID로 다시 보내면 한 줄만 남고 처음과 같은 응답이 와요", async () => {
@@ -354,7 +343,7 @@ describe("퀴즈 풀이 저장과 채점", () => {
     const free = await newProblem("free");
     const choiceId = newAttemptId();
     const freeId = newAttemptId();
-    aiGrades("wrong", "핵심 요소가 없어요");
+    aiGrades("wrong");
 
     const choiceResult = await result(
       await submit(
@@ -367,7 +356,6 @@ describe("퀴즈 풀이 저장과 채점", () => {
           dontKnow: false,
           is_correct: true,
           isCorrect: true,
-          grading: "correct",
         },
         { headers },
       ),
@@ -381,16 +369,16 @@ describe("퀴즈 풀이 저장과 채점", () => {
           confidence: "sure",
           hintUsed: false,
           dontKnow: false,
-          grading: "correct",
+          isCorrect: true,
         },
         { headers },
       ),
     );
 
-    expect(await attemptRow(choiceId)).toMatchObject({ isCorrect: false, grading: null });
-    expect((await attemptRow(freeId)).grading).toBe("wrong");
+    expect((await attemptRow(choiceId)).isCorrect).toBe(false);
+    expect((await attemptRow(freeId)).isCorrect).toBe(false);
     expect(choiceResult).toMatchObject({ isCorrect: false, answer: choice.answer, explanation: choice.explanation });
-    expect(freeResult).toMatchObject({ grading: "wrong", answer: free.answer, explanation: free.explanation });
+    expect(freeResult).toMatchObject({ isCorrect: false, answer: free.answer, explanation: free.explanation });
   });
 
   it("TC-111 다른 사이트에서 보낸 풀이 요청은 403으로 거부해요", async () => {
@@ -438,8 +426,6 @@ describe("퀴즈 풀이 저장과 채점", () => {
       expect(await attemptRow(id)).toMatchObject({
         answerText: "다시 그려요",
         confidence: "sure",
-        grading: null,
-        gradingReason: null,
         isCorrect: null,
       });
       expect(received).toMatchObject({ outcome: "ungraded", answer: free.answer, explanation: free.explanation });
@@ -450,7 +436,7 @@ describe("퀴즈 풀이 저장과 채점", () => {
 
     expect(retried).toEqual(failed);
     expect(ai.create).not.toHaveBeenCalled();
-    expect((await attemptRow(failedId)).grading).toBeNull();
+    expect((await attemptRow(failedId)).isCorrect).toBeNull();
   });
 
   it("TC-113 다른 학습자에게 만든 문제로 풀이를 보내면 거부하고 정답을 내려주지 않아요", async () => {
@@ -485,5 +471,19 @@ describe("퀴즈 풀이 저장과 채점", () => {
 
     expect((await attemptRow(attemptId)).isCorrect).toBe(true);
     expect(body).toMatchObject({ isCorrect: true, answer: retired.answer, explanation: retired.explanation });
+  });
+
+  it("TC-134 서술형 잘 모르겠어요 풀이를 같은 풀이 ID로 다시 보내면 한 줄만 남고 처음과 같은 응답이 와요", async () => {
+    const { headers } = await loginConsented();
+    const free = await newProblem("free");
+    const attemptId = newAttemptId();
+    const body = { attemptId, problemId: free.id, answerText: "상태가 바뀌면", hintUsed: false, dontKnow: true };
+
+    const first = await result(await submit(body, { headers }));
+    const second = await result(await submit(body, { headers }));
+
+    expect(await attemptRows(attemptId)).toHaveLength(1);
+    expect(second).toEqual(first);
+    expect(ai.create).not.toHaveBeenCalled();
   });
 });

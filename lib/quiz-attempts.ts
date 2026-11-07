@@ -3,7 +3,7 @@ import { captureException } from "@sentry/nextjs";
 import { eq } from "drizzle-orm";
 import { safeMessage } from "@/lib/auth/sentry-logger";
 import { getDb } from "@/lib/db";
-import { CONFIDENCES, type GRADINGS, type QuizAnswer, quizAttempt, quizProblem } from "@/lib/db/schema";
+import { CONFIDENCES, type QuizAnswer, quizAttempt, quizProblem } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import { gradeFreeAnswer } from "@/lib/llm/grading";
 import {
@@ -18,7 +18,6 @@ import {
 import { studyDay } from "@/lib/study-day";
 
 type Confidence = (typeof CONFIDENCES)[number];
-type Grading = (typeof GRADINGS)[number];
 
 export type AttemptInput = {
   attemptId: string;
@@ -31,19 +30,10 @@ export type AttemptInput = {
   dontKnow: boolean;
 };
 
-// 채점 결과와 함께 정답과 해설을 내려준다. 서술형 잘 모르겠어요는 해설 없이 다음 문제로 가므로 저장 확인만 담는다.
+// 채점 결과와 함께 정답과 해설을 내려준다. 서술형 AI 채점이 실패하면 채점 결과만 빠진다.
 export type AttemptResult =
-  | { outcome: "graded"; format: "mcq" | "blank"; isCorrect: boolean; answer: QuizAnswer; explanation: string }
-  | {
-      outcome: "graded";
-      format: "free";
-      grading: Grading;
-      gradingReason: string | null;
-      answer: QuizAnswer;
-      explanation: string;
-    }
-  | { outcome: "ungraded"; answer: QuizAnswer; explanation: string }
-  | { outcome: "skipped" };
+  | { outcome: "graded"; isCorrect: boolean; answer: QuizAnswer; explanation: string }
+  | { outcome: "ungraded"; answer: QuizAnswer; explanation: string };
 
 export type Submission =
   | { kind: "saved"; result: AttemptResult }
@@ -122,64 +112,50 @@ function answerFor(
 function answerColumns(answer: Answer) {
   switch (answer.kind) {
     case "choice":
-      return { chosenIndex: answer.chosenIndex, answerText: null, confidence: answer.confidence, dontKnow: false };
+      return { chosenIndex: answer.chosenIndex, answerText: null, confidence: answer.confidence };
     case "blank":
     case "free":
-      return { chosenIndex: null, answerText: answer.text, confidence: answer.confidence, dontKnow: false };
+      return { chosenIndex: null, answerText: answer.text, confidence: answer.confidence };
     case "dont-know":
-      return { chosenIndex: null, answerText: answer.text, confidence: null, dontKnow: true };
+      return { chosenIndex: null, answerText: answer.text, confidence: "guess" as const };
   }
 }
 
-type Grade = { isCorrect: boolean | null; grading: Grading | null; gradingReason: string | null };
+type Problem = Pick<typeof quizProblem.$inferSelect, "stem" | "hint" | "explanation">;
 
-const UNGRADED: Grade = { isCorrect: null, grading: null, gradingReason: null };
-
-async function grade(answer: Answer, { stem, code }: { stem: string; code: string | null }): Promise<Grade> {
+// 잘 모르겠어요는 찍어서 틀린 풀이로 남긴다. 서술형 AI 채점이 실패하면 null을 돌려준다.
+async function grade(answer: Answer, problem: Problem): Promise<boolean | null> {
   switch (answer.kind) {
     case "choice":
-      return { ...UNGRADED, isCorrect: gradeChoice(answer.key, answer.chosenIndex) };
+      return gradeChoice(answer.key, answer.chosenIndex);
     case "blank":
-      return { ...UNGRADED, isCorrect: gradeBlank(answer.key, answer.text) };
+      return gradeBlank(answer.key, answer.text);
     case "dont-know":
-      return UNGRADED;
+      return false;
     case "free":
-      // AI 채점이 실패해도 풀이는 남긴다. 채점 결과를 비워 두면 응답이 채점하지 못했다고 알린다.
       try {
-        const { grading, reason } = await gradeFreeAnswer({ stem, code, ...answer.key, answer: answer.text });
-        return { ...UNGRADED, grading, gradingReason: reason };
+        return await gradeFreeAnswer({ ...problem, ...answer.key, answer: answer.text });
       } catch (error) {
         reportQuizError(error);
-        return UNGRADED;
+        return null;
       }
   }
 }
 
-type SavedAttempt = Grade &
-  Pick<typeof quizAttempt.$inferSelect, "learnerId" | "dontKnow"> &
-  Pick<typeof quizProblem.$inferSelect, "format" | "answer" | "explanation">;
+type SavedAttempt = Pick<typeof quizAttempt.$inferSelect, "learnerId" | "isCorrect"> &
+  Pick<typeof quizProblem.$inferSelect, "answer" | "explanation">;
 
-function toResult(saved: SavedAttempt): AttemptResult {
-  const { answer, explanation } = saved;
-  if (saved.dontKnow) return { outcome: "skipped" };
-  if (saved.format === "free") {
-    return saved.grading
-      ? { outcome: "graded", format: "free", grading: saved.grading, gradingReason: saved.gradingReason, answer, explanation }
-      : { outcome: "ungraded", answer, explanation };
-  }
-  if (saved.isCorrect === null) throw new Error(`${saved.format} 풀이에 채점 결과가 없다.`);
-  return { outcome: "graded", format: saved.format, isCorrect: saved.isCorrect, answer, explanation };
+function toResult({ isCorrect, answer, explanation }: SavedAttempt): AttemptResult {
+  return isCorrect === null
+    ? { outcome: "ungraded", answer, explanation }
+    : { outcome: "graded", isCorrect, answer, explanation };
 }
 
 async function savedAttempt(attemptId: string): Promise<SavedAttempt | undefined> {
   const [saved] = await getDb()
     .select({
       learnerId: quizAttempt.learnerId,
-      dontKnow: quizAttempt.dontKnow,
       isCorrect: quizAttempt.isCorrect,
-      grading: quizAttempt.grading,
-      gradingReason: quizAttempt.gradingReason,
-      format: quizProblem.format,
       answer: quizProblem.answer,
       explanation: quizProblem.explanation,
     })
@@ -200,7 +176,18 @@ export async function submitAttempt(learnerId: string, input: AttemptInput): Pro
 
   const db = getDb();
   // 내려간 문제도 받는다. 학습자가 풀던 중에 내려갔을 수 있다.
-  const [problem] = await db.select().from(quizProblem).where(eq(quizProblem.id, input.problemId));
+  const [problem] = await db
+    .select({
+      id: quizProblem.id,
+      learnerId: quizProblem.learnerId,
+      format: quizProblem.format,
+      stem: quizProblem.stem,
+      answer: quizProblem.answer,
+      hint: quizProblem.hint,
+      explanation: quizProblem.explanation,
+    })
+    .from(quizProblem)
+    .where(eq(quizProblem.id, input.problemId));
   if (!problem) return { kind: "unknown-problem" };
   // 기본 문제는 누구나 풀고, 학습자에게 만든 문제는 그 학습자만 푼다.
   if (problem.learnerId !== null && problem.learnerId !== learnerId) return { kind: "not-yours" };
@@ -210,8 +197,7 @@ export async function submitAttempt(learnerId: string, input: AttemptInput): Pro
 
   // 학습자가 답을 낸 시각이다. 서술형 채점을 기다리는 시간은 넣지 않는다.
   const answeredAt = new Date();
-  const graded = await grade(answer, problem);
-  const columns = answerColumns(answer);
+  const isCorrect = await grade(answer, problem);
   const [inserted] = await db
     .insert(quizAttempt)
     .values({
@@ -219,18 +205,16 @@ export async function submitAttempt(learnerId: string, input: AttemptInput): Pro
       learnerId,
       problemId: problem.id,
       studyDay: studyDay(answeredAt),
-      ...columns,
+      ...answerColumns(answer),
       hintUsed: input.hintUsed,
-      ...graded,
+      isCorrect,
       answeredAt,
       appVersion: env.APP_VERSION,
     })
     .onConflictDoNothing()
     .returning({ id: quizAttempt.id });
   if (inserted) {
-    const { format, answer: key, explanation } = problem;
-    const result = toResult({ ...graded, learnerId, dontKnow: columns.dontKnow, format, answer: key, explanation });
-    return { kind: "saved", result };
+    return { kind: "saved", result: toResult({ learnerId, isCorrect, answer: problem.answer, explanation: problem.explanation }) };
   }
   // 같은 풀이 ID가 동시에 왔으면 먼저 저장한 요청의 결과를 따른다.
   const saved = await savedAttempt(input.attemptId);
