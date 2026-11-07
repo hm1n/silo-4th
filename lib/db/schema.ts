@@ -21,12 +21,11 @@ export const QUESTION_STATUSES = ["pending", "ok", "error"] as const;
 export const MESSAGE_ROLES = ["user", "assistant"] as const;
 export const QUIZ_FORMATS = ["mcq", "blank", "free"] as const;
 export const CONFIDENCES = ["sure", "unsure", "guess"] as const;
-export const GRADINGS = ["correct", "partial", "wrong"] as const;
 export const RECALL_REASONS = ["read_no_question", "asked", "quiz"] as const;
 
 // format 컬럼이 어느 모양인지 정한다. DB는 내용을 검증하지 않으므로 저장 전에 서버가 검증한다.
 export type QuizAnswer =
-  | { choices: { text: string; misconception?: string }[]; answerIndex: number }
+  | { choices: { text: string }[]; answerIndex: number }
   | { accepted: string[] }
   | { modelAnswer: string; keyPoints: string[] };
 
@@ -212,7 +211,6 @@ export const quizProblem = pgTable(
     sourceQuestionId: uuid("source_question_id").references(() => question.id),
     format: text("format", { enum: QUIZ_FORMATS }).notNull(),
     stem: text("stem").notNull(),
-    code: text("code"),
     answer: jsonb("answer").$type<QuizAnswer>().notNull(),
     hint: text("hint").notNull(),
     explanation: text("explanation").notNull(),
@@ -280,6 +278,8 @@ export const recallItem = pgTable(
 );
 
 // recall_item_id가 비어 있으면 퀴즈 탭에서 푼 기록이다.
+// DB에 남은 dont_know, grading, grading_reason과 quiz_problems.code는 코드에서 빼 두었다.
+// 이전 코드가 새 스키마에서도 돌도록, 이 코드가 배포된 뒤 다음 마이그레이션에서 지운다. 근거는 ADR 0009 결정 7이다.
 export const quizAttempt = pgTable(
   "quiz_attempts",
   {
@@ -296,13 +296,10 @@ export const quizAttempt = pgTable(
     chosenIndex: integer("chosen_index"),
     answerText: text("answer_text"),
     reasonText: text("reason_text"),
-    dontKnow: boolean("dont_know").default(false).notNull(),
     confidence: text("confidence", { enum: CONFIDENCES }),
     hintUsed: boolean("hint_used").default(false).notNull(),
-    // 객관식과 빈칸은 잘 모르겠어요도 false로 저장한다. 서술만 비워 두고 grading을 쓴다.
+    // 서술형 AI 채점이 실패했을 때만 비어 있다.
     isCorrect: boolean("is_correct"),
-    grading: text("grading", { enum: GRADINGS }),
-    gradingReason: text("grading_reason"),
     answeredAt: timestamp("answered_at", { withTimezone: true }).defaultNow().notNull(),
     appVersion: text("app_version").notNull(),
   },
@@ -317,11 +314,6 @@ export const quizAttempt = pgTable(
       foreignColumns: [recallItem.id, recallItem.problemId],
     }),
     check("quiz_attempts_confidence_check", sql`${table.confidence} in (${oneOf(CONFIDENCES)})`),
-    check("quiz_attempts_grading_check", sql`${table.grading} in (${oneOf(GRADINGS)})`),
-    check(
-      "quiz_attempts_dont_know_check",
-      sql`not ${table.dontKnow} or (${table.reasonText} is null and ${table.confidence} is null)`,
-    ),
   ],
 );
 
